@@ -8,7 +8,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 const MESSAGE_SOURCE = "GESTIONNAIRE_MDP_EXTENSION";
-const DEFAULT_BASE_URL = "http://localhost/projet_ameliore";
+const DEFAULT_BASE_URL = "http://localhost/password-manager";
 const SESSION_COOKIE_NAME = "gestionnaire_mdp_session";
 
 function normalizeBaseUrl(value) {

@@ -468,7 +468,7 @@ slideBase(
     ]),
     panel(
       { name: "s9-local-note", width: fill, height: fixed(86), fill: "#102033", line: { color: colors.blue, weight: 1 }, borderRadius: 14, padding: { x: 24, y: 18 } },
-      tx("Préparation locale : démarrer Apache + MySQL dans XAMPP, importer database.sql, puis ouvrir http://localhost/projet_ameliore.", {
+      tx("Préparation locale : démarrer Apache + MySQL dans XAMPP, importer database.sql, puis ouvrir http://localhost/password-manager.", {
         name: "s9-local-note-text",
         height: fixed(42),
         size: 24,

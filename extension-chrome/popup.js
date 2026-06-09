@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = "http://localhost/projet_ameliore";
+const DEFAULT_BASE_URL = "http://localhost/password-manager";
 const MESSAGE_SOURCE = "GESTIONNAIRE_MDP_EXTENSION";
 const SESSION_COOKIE_NAME = "gestionnaire_mdp_session";
 
@@ -266,7 +266,7 @@ async function init() {
     await loadEntries();
   } catch (error) {
     if (error.status === 401) {
-      setStatus("Session expirée. Connecte-toi d'abord sur http://localhost/projet_ameliore dans ce même Chrome.", true);
+      setStatus("Session expirée. Connecte-toi d'abord sur http://localhost/password-manager dans ce même Chrome.", true);
       return;
     }
 

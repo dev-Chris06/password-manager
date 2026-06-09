@@ -6,7 +6,7 @@ require_once __DIR__ . '/env.php';
 define('BASE_PATH', dirname(__DIR__));
 load_env(BASE_PATH . '/.env');
 
-define('APP_URL', rtrim((string) env_value('APP_URL', 'http://localhost/projet_ameliore'), '/'));
+define('APP_URL', rtrim((string) env_value('APP_URL', 'http://localhost/password-manager'), '/'));
 define('BCRYPT_COST', 12);
 define('PBKDF2_ITERATIONS', 100000);
 define('LOGIN_MAX_FAILURES', 3);

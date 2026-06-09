@@ -14,10 +14,10 @@
 
 ### Préparation
 1. S'assurer qu'Apache et MySQL sont démarrés (services natifs)
-2. Accéder à: `http://localhost/projet_ameliore/pages/register.php`
+2. Accéder à: `http://localhost/password-manager/pages/register.php`
 
 ### Test 2: Inscription d'un nouvel utilisateur
-1. Aller sur `http://localhost/projet_ameliore/pages/register.php`
+1. Aller sur `http://localhost/password-manager/pages/register.php`
 2. Remplir le formulaire avec:
    - Email: `test@example.com`
    - Mot de passe: `MotDePasseTest123!`
@@ -27,7 +27,7 @@
 5. **Vérifier**: L'utilisateur est créé dans la base de données
 
 ### Test 3: Connexion avec mot de passe correct
-1. Aller sur `http://localhost/projet_ameliore/pages/login.php`
+1. Aller sur `http://localhost/password-manager/pages/login.php`
 2. Entrer:
    - Email: `test@example.com`
    - Mot de passe: `MotDePasseTest123!`
@@ -37,7 +37,7 @@
 
 ### Test 4: Connexion avec mot de passe incorrect
 1. Se déconnecter d'abord
-2. Aller sur `http://localhost/projet_ameliore/pages/login.php`
+2. Aller sur `http://localhost/password-manager/pages/login.php`
 3. Entrer:
    - Email: `test@example.com`
    - Mot de passe: `MauvaisMotDePasse`

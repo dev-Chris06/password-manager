@@ -51,8 +51,8 @@ newButton.addEventListener("click", () => {
 ## 3. URL de backup codee en dur
 
 - Fichier : `assets/js/backup.js`
-- Lignes concernees : appels `fetch('/projet_ameliore/ajax/exporter.php')` et `fetch('/projet_ameliore/ajax/importer.php')`
-- Probleme : l'URL `/projet_ameliore` est codee en dur, alors que le projet utilise aussi `APP_URL` et que la documentation mentionne parfois `/projet`.
+- Lignes concernees : appels `fetch('/password-manager/ajax/exporter.php')` et `fetch('/password-manager/ajax/importer.php')`
+- Probleme : l'URL `/password-manager` est codee en dur, alors que le projet utilise aussi `APP_URL` et que la documentation mentionne parfois `/projet`.
 - Impact : l'export/import peut casser si le projet est installe sous un autre nom de dossier.
 - Correction recommandee :
   - Utiliser la variable deja declaree dans `pages/backup.php` : `window.APP_BASE_URL`.
@@ -166,7 +166,7 @@ Exemple :
 ## 10. Incoherence entre les chemins documentes
 
 - Fichiers concernes : `.env.example`, `README.md`, `TEST_GUIDE.md`, `extension-chrome/background.js`, `extension-chrome/popup.js`, `assets/js/backup.js`
-- Probleme : certaines parties utilisent `http://localhost/projet`, d'autres `http://localhost/projet_ameliore`.
+- Probleme : certaines parties utilisent `http://localhost/projet`, d'autres `http://localhost/password-manager`.
 - Impact : confusion pendant l'installation et erreurs de requetes AJAX/extension selon le dossier XAMPP utilise.
 - Correction recommandee :
   - Choisir un seul chemin par defaut.
@@ -215,7 +215,7 @@ Exemple :
 
 1. Corriger `ajax/enregistrer_extension.php`.
 2. Corriger `extension-chrome/content.js`.
-3. Harmoniser les chemins `/projet` et `/projet_ameliore`.
+3. Harmoniser les chemins `/projet` et `/password-manager`.
 4. Integrer la colonne `ip` dans `database.sql` ou rendre la migration obligatoire.
 5. Remplacer le QR code TOTP externe par une generation locale fiable.
 6. Corriger `test_db.php`.

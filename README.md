@@ -10,11 +10,11 @@ Application PHP procédurale pour XAMPP permettant de gérer un coffre de mots d
 
 ## Installation
 
-1. Placez le dossier du projet dans `htdocs`, par exemple `C:\xampp\htdocs\projet_ameliore`.
+1. Placez le dossier du projet dans `htdocs`, par exemple `C:\xampp\htdocs\password-manager`.
 2. Importez `database.sql` dans MySQL :
 
 ```sql
-SOURCE C:/xampp/htdocs/projet_ameliore/database.sql;
+SOURCE C:/xampp/htdocs/password-manager/database.sql;
 ```
 
 3. Copiez `.env.example` vers `.env`.
@@ -25,10 +25,10 @@ DB_HOST=127.0.0.1
 DB_NAME=password_manager
 DB_USER=root
 DB_PASS=
-APP_URL=http://localhost/projet_ameliore
+APP_URL=http://localhost/password-manager
 ```
 
-5. Ouvrez `http://localhost/projet_ameliore`.
+5. Ouvrez `http://localhost/password-manager`.
 
 ## Usage
 

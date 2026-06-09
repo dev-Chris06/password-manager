@@ -9,14 +9,14 @@ Cette extension Manifest V3 permet de remplir automatiquement un formulaire de c
 3. Activer le mode développeur.
 4. Cliquer sur `Charger l'extension non empaquetée`.
 5. Sélectionner le dossier `extension-chrome`.
-6. Se connecter au gestionnaire dans le même navigateur : `http://localhost/projet_ameliore/pages/login.php`.
+6. Se connecter au gestionnaire dans le même navigateur : `http://localhost/password-manager/pages/login.php`.
 7. Ouvrir une page qui contient un formulaire de connexion.
 8. Cliquer sur l'icône de l'extension, choisir un compte, puis valider.
 
 ## Fonctionnement
 
 - Le popup lit le domaine de l'onglet actif.
-- Il appelle `http://localhost/projet_ameliore/ajax/remplissage.php?domaine=...` avec `credentials: "include"`.
+- Il appelle `http://localhost/password-manager/ajax/remplissage.php?domaine=...` avec `credentials: "include"`.
 - Le cookie PHP `gestionnaire_mdp_session` reste HttpOnly.
 - L'endpoint retourne seulement les métadonnées des entrées et le token CSRF courant.
 - Au clic sur une entrée, le popup appelle `ajax/dechiffrer.php` avec `entry_id` et `csrf_token`.
@@ -49,7 +49,7 @@ Cette extension Manifest V3 permet de remplir automatiquement un formulaire de c
 L'URL par défaut est :
 
 ```text
-http://localhost/projet_ameliore
+http://localhost/password-manager
 ```
 
 Elle peut être modifiée dans le champ du popup. La valeur est stockée dans `chrome.storage.local`, mais elle ne contient aucun secret.

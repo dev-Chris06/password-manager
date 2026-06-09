@@ -686,7 +686,7 @@ base(
         subWidth: 760,
         subHeight: 82,
       }),
-      tx("URL locale : http://localhost/projet_ameliore", { name: "s7-url", width: fixed(720), height: fixed(42), size: 26, bold: true, color: colors.teal }),
+      tx("URL locale : http://localhost/password-manager", { name: "s7-url", width: fixed(720), height: fixed(42), size: 26, bold: true, color: colors.teal }),
       tx("XAMPP : Apache + MySQL, base importée depuis database.sql.", { name: "s7-xampp", width: fixed(760), height: fixed(50), size: 23, color: colors.muted }),
     ]),
     column({ name: "s7-steps", width: fill, height: fill, gap: 12, justify: "center" }, [
