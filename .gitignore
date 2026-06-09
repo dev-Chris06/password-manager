@@ -1,0 +1,9 @@
+.env
+*.log
+vendor/
+node_modules/
+presentation-gestionnaire-mdp/output/
+presentation-gestionnaire-mdp/scratch/
+.idea/
+.vscode/
+Thumbs.db

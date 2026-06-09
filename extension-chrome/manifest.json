@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Gestionnaire MDP - Remplissage automatique",
+  "version": "1.0.4",
+  "description": "Remplit les identifiants depuis le gestionnaire de mots de passe local PHP.",
+  "permissions": ["activeTab", "storage", "cookies"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "action": {
+    "default_title": "Gestionnaire MDP",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.svg",
+      "48": "icon.svg",
+      "128": "icon.svg"
+    }
+  },
+  "icons": {
+    "16": "icon.svg",
+    "48": "icon.svg",
+    "128": "icon.svg"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

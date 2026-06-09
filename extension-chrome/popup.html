@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestionnaire MDP</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #fff8ef;
+      --panel: #ffffff;
+      --ink: #24160b;
+      --muted: #6f5744;
+      --line: #ead6c0;
+      --orange: #f97316;
+      --orange-dark: #c2410c;
+      --soft: #ffedd5;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 370px;
+      margin: 0;
+      padding: 16px;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .domain {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    .badge {
+      border: 1px solid #fdba74;
+      border-radius: 999px;
+      padding: 6px 10px;
+      color: var(--orange-dark);
+      background: var(--soft);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .settings {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 11px;
+      color: var(--ink);
+      background: var(--panel);
+      font-size: 13px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #ffffff;
+      background: var(--orange);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      border: 1px solid #fdba74;
+      color: var(--orange-dark);
+      background: var(--soft);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .status {
+      min-height: 20px;
+      margin: 8px 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .status.error {
+      color: #991b1b;
+    }
+
+    .entries {
+      display: grid;
+      gap: 10px;
+    }
+
+    .entry {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      color: var(--ink);
+      background: var(--panel);
+      text-align: left;
+    }
+
+    .entry:hover {
+      border-color: #fb923c;
+      background: #fff7ed;
+    }
+
+    .site {
+      color: var(--orange-dark);
+      font-size: 12px;
+      font-weight: 700;
+      word-break: break-all;
+    }
+
+    .identifier {
+      margin-top: 4px;
+      font-size: 16px;
+      font-weight: 800;
+      word-break: break-all;
+    }
+
+    .category {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .empty {
+      border: 1px dashed #fdba74;
+      border-radius: 14px;
+      padding: 16px;
+      color: var(--muted);
+      background: rgba(255, 237, 213, 0.45);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Remplissage auto</h1>
+      <div id="domain" class="domain">Domaine en cours...</div>
+    </div>
+    <div id="fieldStatus" class="badge">Analyse</div>
+  </header>
+
+  <div class="settings">
+    <input id="baseUrl" type="url" autocomplete="off" spellcheck="false" aria-label="URL de base">
+    <button id="saveBaseUrl" class="secondary" type="button">OK</button>
+  </div>
+
+  <div id="status" class="status">Chargement...</div>
+  <div id="entries" class="entries"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
