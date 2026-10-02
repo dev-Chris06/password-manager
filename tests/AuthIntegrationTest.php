@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-
-
 use PHPUnit\Framework\TestCase;
 
 $_testPdo = null;
@@ -13,36 +11,71 @@ final class AuthIntegrationTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        self::$pdo = new PDO('sqlite::memory:');
+        require_once __DIR__ . '/../config/env.php';
+        load_env(dirname(__DIR__) . '/.env');
+
+        $host = (string) env_value('DB_HOST', '127.0.0.1');
+        $user = (string) env_value('DB_USER', 'root');
+        $pass = (string) env_value('DB_PASS', '');
+        $dbTest = 'password_manager_test';
+
+        $root = new PDO(
+            sprintf('mysql:host=%s;charset=utf8mb4', $host),
+            $user,
+            $pass,
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]
+        );
+        $root->exec('SET FOREIGN_KEY_CHECKS=0');
+        $root->exec(sprintf('DROP DATABASE IF EXISTS `%s`', $dbTest));
+        $root->exec(sprintf(
+            'CREATE DATABASE `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
+            $dbTest
+        ));
+        $root->exec(sprintf('USE `%s`', $dbTest));
+
+        $root->exec('CREATE TABLE utilisateurs (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(255) NOT NULL,
+            hash_mdp VARCHAR(255) NOT NULL,
+            sel_pbkdf2 VARCHAR(128) NOT NULL,
+            totp_secret VARCHAR(255) NULL DEFAULT NULL,
+            totp_active TINYINT(1) NOT NULL DEFAULT 0,
+            last_totp_slot BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_utilisateurs_email (email)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+
+        $root->exec('CREATE TABLE entrees (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNSIGNED NOT NULL,
+            categorie ENUM(\'Réseaux sociaux\', \'Email\', \'Banque\', \'École\', \'Autre\') NOT NULL DEFAULT \'Autre\',
+            site VARCHAR(255) NOT NULL,
+            identifiant VARCHAR(255) NOT NULL,
+            mdp_chiffre TEXT NOT NULL,
+            iv VARCHAR(255) NOT NULL,
+            auth_tag VARCHAR(255) NOT NULL DEFAULT \'\',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_entrees_user_id (user_id),
+            INDEX idx_entrees_categorie (categorie),
+            CONSTRAINT fk_entrees_user
+                FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+                ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+
+        $root->exec('SET FOREIGN_KEY_CHECKS=1');
+
+        self::$pdo = $root;
         global $_testPdo;
         $_testPdo = self::$pdo;
-        self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-
-        self::$pdo->exec('CREATE TABLE utilisateurs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT NOT NULL UNIQUE,
-            hash_mdp TEXT NOT NULL,
-            sel_pbkdf2 TEXT NOT NULL,
-            totp_active INTEGER DEFAULT 0,
-            totp_secret TEXT NULL,
-            last_totp_slot INTEGER DEFAULT 0
-        )');
-        self::$pdo->exec('CREATE TABLE entrees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            categorie TEXT DEFAULT \'Autre\',
-            site TEXT NOT NULL,
-            identifiant TEXT NOT NULL,
-            mdp_chiffre TEXT NOT NULL,
-            iv TEXT NOT NULL,
-            auth_tag TEXT NOT NULL
-        )');
 
         if (!function_exists('get_pdo')) {
             function get_pdo(): PDO {
                 global $_testPdo;
-                assert($_testPdo instanceof PDO, 'Le mock PDO n\'a pas été initialisé (appelez setUpBeforeClass avant get_pdo()).');
+                assert($_testPdo instanceof PDO, 'Le mock PDO n\'a pas été initialisé.');
                 return $_testPdo;
             }
         }
@@ -56,6 +89,24 @@ final class AuthIntegrationTest extends TestCase
 
         require_once __DIR__ . '/../includes/crypto.php';
         require_once __DIR__ . '/../includes/entrees.php';
+    }
+
+    protected function setUp(): void
+    {
+        self::$pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+        self::$pdo->exec('TRUNCATE TABLE entrees');
+        self::$pdo->exec('TRUNCATE TABLE utilisateurs');
+        self::$pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$pdo instanceof PDO) {
+            self::$pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+            self::$pdo->exec('DROP DATABASE IF EXISTS password_manager_test');
+            self::$pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+        }
+        self::$pdo = null;
     }
 
     public function testOwnershipLecture(): void

@@ -50,7 +50,7 @@ Dans la limite du possible, on **ne divulgue la faille** publiquement qu'après 
 Sont considérés **"en scope"** pour la sécurité :
 - [index.php](file:///home/dev-chris06/dev/password-manager/index.php) + `pages/*.php` + `ajax/*.php`
 - Code PHP principal : `includes/*.php` + `config/*.php`
-- Schéma SQL : [database.sql](file:///home/dev-chris06/dev/password-manager/database.sql) et fichiers `migrations/*.sql`
+- Schéma SQL : [database.sql](file:///home/dev-chris06/dev/password-manager/database.sql)
 - Assets JS : `assets/js/*.js` (générateur, dashboard, backup)
 - Extension Chrome MV3 : `extension-chrome/` (manifest, background, content, popup)
 

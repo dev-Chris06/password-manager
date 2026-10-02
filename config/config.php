@@ -38,6 +38,33 @@ if (!defined('SESSION_TIMEOUT_ABSOLU_SEC')) {
 if (!defined('LOGIN_DUMMY_BCRYPT_HASH')) {
     define('LOGIN_DUMMY_BCRYPT_HASH', '$2y$12$DRjm/5F3C1g3QVtR0k1WGOxhpBpR.G0a1.3nVh19XxZz7f7q5b6Oa');
 }
+if (!defined('RL_IP_EMAIL_MAX_5MIN')) {
+    define('RL_IP_EMAIL_MAX_5MIN', 3);
+}
+if (!defined('RL_IP_EMAIL_BLOCK_SEC')) {
+    define('RL_IP_EMAIL_BLOCK_SEC', 60);
+}
+if (!defined('RL_IP_MAX_1H')) {
+    define('RL_IP_MAX_1H', 30);
+}
+if (!defined('RL_IP_BLOCK_SEC')) {
+    define('RL_IP_BLOCK_SEC', 3600);
+}
+if (!defined('RL_EMAIL_MAX_1H')) {
+    define('RL_EMAIL_MAX_1H', 10);
+}
+if (!defined('RL_EMAIL_BLOCK_SEC')) {
+    define('RL_EMAIL_BLOCK_SEC', 1800);
+}
+if (!defined('RL_RETENTION_DAYS')) {
+    define('RL_RETENTION_DAYS', 7);
+}
+if (!defined('LOGIN_LOCK_MAX_FAILURES')) {
+    define('LOGIN_LOCK_MAX_FAILURES', RL_IP_EMAIL_MAX_5MIN);
+}
+if (!defined('LOGIN_LOCK_SECONDS')) {
+    define('LOGIN_LOCK_SECONDS', RL_IP_EMAIL_BLOCK_SEC);
+}
 if (!defined('SECURITY_HEADERS')) {
     define('SECURITY_HEADERS', [
     'X-Content-Type-Options'  => 'nosniff',

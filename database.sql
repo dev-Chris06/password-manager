@@ -58,6 +58,25 @@ CREATE TABLE IF NOT EXISTS tentatives_login (
     INDEX idx_tentatives_ip (ip)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS tentatives_login_detail (
+    id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ip            VARCHAR(45)  NOT NULL,
+    email         VARCHAR(255) NOT NULL,
+    tentative_at  DATETIME     NOT NULL,
+    succes        TINYINT(1)   NOT NULL DEFAULT 0,
+    INDEX idx_ip_email_time (ip, email, tentative_at),
+    INDEX idx_email_time      (email, tentative_at),
+    INDEX idx_ip_time         (ip, tentative_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS login_blocages (
+    ip              VARCHAR(45)  NOT NULL,
+    email           VARCHAR(255) NOT NULL,
+    bloque_jusqu_a  DATETIME     NOT NULL,
+    UNIQUE KEY uq_ip_email (ip, email),
+    INDEX idx_bloque_jusqu_a (bloque_jusqu_a)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS journal_actions (
     id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id     INT UNSIGNED NULL,

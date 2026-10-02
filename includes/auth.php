@@ -291,96 +291,66 @@ function trouver_utilisateur_par_email(string $email): ?array
  */
 function statut_blocage_login(string $email): array
 {
-    $pdo = get_pdo();
-    $email = normaliser_email($email);
-    $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
-    
-    $stmt = $pdo->prepare(
-        "SELECT nb_tentatives, bloque_jusqu_a,
-            CASE
-                WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a > NOW()
-                THEN TIMESTAMPDIFF(SECOND, NOW(), bloque_jusqu_a)
-                ELSE 0
-            END AS secondes_restantes,
-            CASE
-                WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a <= NOW()
-                THEN 1
-                ELSE 0
-            END AS blocage_expire
-        FROM tentatives_login
-        WHERE email = :email
-        LIMIT 1"
-    );
-    $stmt->execute(['email' => $email]);
-    $row = $stmt->fetch();
+    try {
+        $pdo = get_pdo();
+        $email = normaliser_email($email);
+        $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
 
-    if (!is_array($row)) {
+        $stmt = $pdo->prepare(
+            "SELECT nb_tentatives, bloque_jusqu_a,
+                CASE
+                    WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a > NOW()
+                    THEN TIMESTAMPDIFF(SECOND, NOW(), bloque_jusqu_a)
+                    ELSE 0
+                END AS secondes_restantes,
+                CASE
+                    WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a <= NOW()
+                    THEN 1
+                    ELSE 0
+                END AS blocage_expire
+            FROM tentatives_login
+            WHERE email = :email
+            LIMIT 1"
+        );
+        $stmt->execute(['email' => $email]);
+        $row = $stmt->fetch();
+
+        if (!is_array($row)) {
+            return ['bloque' => false, 'secondes_restantes' => 0];
+        }
+
+        if ((int) $row['blocage_expire'] === 1) {
+            reinitialiser_tentatives_login($email);
+            return ['bloque' => false, 'secondes_restantes' => 0];
+        }
+
+        $seconds = max(0, (int) $row['secondes_restantes']);
+
+        return ['bloque' => $seconds > 0, 'secondes_restantes' => $seconds];
+    } catch (Throwable) {
         return ['bloque' => false, 'secondes_restantes' => 0];
     }
-
-    if ((int) $row['blocage_expire'] === 1) {
-        reinitialiser_tentatives_login($email);
-        return ['bloque' => false, 'secondes_restantes' => 0];
-    }
-
-    $seconds = max(0, (int) $row['secondes_restantes']);
-
-    $stmtIp = $pdo->prepare(
-        "SELECT COUNT(*) as count
-         FROM tentatives_login
-         WHERE ip = :ip
-           AND derniere_tentative > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
-    );
-    $stmtIp->execute(['ip' => $ip]);
-    $ipCount = (int) $stmtIp->fetch()['count'];
-    
-    if ($ipCount >= 20) {
-        return ['bloque' => true, 'secondes_restantes' => 3600];
-    }
-
-    return ['bloque' => $seconds > 0, 'secondes_restantes' => $seconds];
 }
 
 function enregistrer_echec_login(string $email): void
 {
-    $email = normaliser_email($email);
-    $pdo = get_pdo();
-    $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
-    $maxTentatives = (int) LOGIN_MAX_FAILURES;
-    $blocageSecondes = (int) LOGIN_BLOCK_SECONDS;
-
     try {
+        $email = normaliser_email($email);
+        $pdo = get_pdo();
+        $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+        $maxTentatives = (int) LOGIN_MAX_FAILURES;
+        $blocageSecondes = (int) LOGIN_BLOCK_SECONDS;
+
         $stmt = $pdo->prepare(
             "INSERT INTO tentatives_login (email, ip, nb_tentatives, derniere_tentative, bloque_jusqu_a)
-            VALUES (:email, :ip, 1, NOW(), NULL)
-            ON DUPLICATE KEY UPDATE
-                nb_tentatives = CASE
-                    WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a <= NOW() THEN 1
-                    ELSE nb_tentatives + 1
-                END,
-                derniere_tentative = NOW(),
-                ip = :ip,
-                bloque_jusqu_a = CASE
-                    WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a > NOW() THEN bloque_jusqu_a
-                    WHEN (CASE
-                        WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a <= NOW() THEN 1
-                        ELSE nb_tentatives + 1
-                    END) >= {$maxTentatives} THEN DATE_ADD(NOW(), INTERVAL {$blocageSecondes} SECOND)
-                    ELSE NULL
-                END"
-        );
-        $stmt->execute(['email' => $email, 'ip' => $ip]);
-    } catch (PDOException $e) {
-        if (str_contains($e->getMessage(), 'Unknown column')) {
-            $stmt = $pdo->prepare(
-                "INSERT INTO tentatives_login (email, nb_tentatives, derniere_tentative, bloque_jusqu_a)
-                VALUES (:email, 1, NOW(), NULL)
+                VALUES (:email, :ip, 1, NOW(), NULL)
                 ON DUPLICATE KEY UPDATE
                     nb_tentatives = CASE
                         WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a <= NOW() THEN 1
                         ELSE nb_tentatives + 1
                     END,
                     derniere_tentative = NOW(),
+                    ip = :ip,
                     bloque_jusqu_a = CASE
                         WHEN bloque_jusqu_a IS NOT NULL AND bloque_jusqu_a > NOW() THEN bloque_jusqu_a
                         WHEN (CASE
@@ -389,30 +359,180 @@ function enregistrer_echec_login(string $email): void
                         END) >= {$maxTentatives} THEN DATE_ADD(NOW(), INTERVAL {$blocageSecondes} SECOND)
                         ELSE NULL
                     END"
-            );
-            $stmt->execute(['email' => $email]);
-        } else {
-            throw $e;
-        }
-    }
+        );
+        $stmt->execute(['email' => $email, 'ip' => $ip]);
 
-    $stmtCheck = $pdo->prepare('SELECT nb_tentatives FROM tentatives_login WHERE email = :email');
-    $stmtCheck->execute(['email' => $email]);
-    $row = $stmtCheck->fetch();
-    if (is_array($row) && (int) $row['nb_tentatives'] >= $maxTentatives) {
-        $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-        journaliser_action(null, 'compte_bloque', $emailMasque);
+        $stmtCheck = $pdo->prepare('SELECT nb_tentatives FROM tentatives_login WHERE email = :email');
+        $stmtCheck->execute(['email' => $email]);
+        $row = $stmtCheck->fetch();
+        if (is_array($row) && (int) $row['nb_tentatives'] >= $maxTentatives) {
+            $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
+            journaliser_action(null, 'compte_bloque', $emailMasque);
+        }
+    } catch (Throwable) {
     }
 }
 
 function reinitialiser_tentatives_login(string $email): void
 {
-    $stmt = get_pdo()->prepare(
-        'UPDATE tentatives_login
-         SET nb_tentatives = 0, bloque_jusqu_a = NULL, derniere_tentative = NOW()
-         WHERE email = :email'
-    );
-    $stmt->execute(['email' => normaliser_email($email)]);
+    try {
+        $stmt = get_pdo()->prepare(
+            'UPDATE tentatives_login
+             SET nb_tentatives = 0, bloque_jusqu_a = NULL, derniere_tentative = NOW()
+             WHERE email = :email'
+        );
+        $stmt->execute(['email' => normaliser_email($email)]);
+    } catch (Throwable) {
+    }
+}
+
+function enregistrer_tentative_login_detail(string $email, string $ip, bool $succes): void
+{
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare(
+            'INSERT INTO tentatives_login_detail (ip, email, tentative_at, succes)
+             VALUES (:ip, :email, NOW(), :succes)'
+        );
+        $stmt->execute([
+            'ip'     => substr($ip, 0, 45),
+            'email'  => normaliser_email($email),
+            'succes' => $succes ? 1 : 0,
+        ]);
+    } catch (Throwable) {
+    }
+}
+
+function purger_tentatives_login_anciennes(): void
+{
+    if (!defined('RL_RETENTION_DAYS')) {
+        return;
+    }
+    try {
+        $pdo = get_pdo();
+        $jours = (int) RL_RETENTION_DAYS;
+        $stmt1 = $pdo->prepare(
+            'DELETE FROM tentatives_login_detail
+             WHERE tentative_at < DATE_SUB(NOW(), INTERVAL :days DAY)'
+        );
+        $stmt1->execute(['days' => $jours]);
+
+        $stmt2 = $pdo->prepare(
+            'DELETE FROM tentatives_login
+             WHERE derniere_tentative < DATE_SUB(NOW(), INTERVAL :days DAY)'
+        );
+        $stmt2->execute(['days' => $jours]);
+    } catch (Throwable) {
+    }
+}
+
+/**
+ * Vérifie la présence d'un verrou <IP, Email> explicite dans login_blocages.
+ * Retourne le délai restant du verrou (0 s = pas de verrou / expiré).
+ *
+ * @return array{bloque:bool, secondes_restantes:int}
+ */
+function statut_verrou_login(string $email, string $ip): array
+{
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare(
+            'SELECT bloque_jusqu_a FROM login_blocages
+             WHERE ip = :ip AND email = :email LIMIT 1'
+        );
+        $stmt->execute([
+            'ip'    => substr($ip, 0, 45),
+            'email' => normaliser_email($email),
+        ]);
+        $row = $stmt->fetch();
+        if (!is_array($row) || empty($row['bloque_jusqu_a'])) {
+            return ['bloque' => false, 'secondes_restantes' => 0];
+        }
+        $dateFin = new DateTimeImmutable((string)$row['bloque_jusqu_a']);
+        $maintenant = new DateTimeImmutable();
+        $secondes = $dateFin->getTimestamp() - $maintenant->getTimestamp();
+        if ($secondes <= 0) {
+            return ['bloque' => false, 'secondes_restantes' => 0];
+        }
+        return ['bloque' => true, 'secondes_restantes' => $secondes];
+    } catch (Throwable) {
+        return ['bloque' => false, 'secondes_restantes' => 0];
+    }
+}
+
+/**
+ * Pose (ou remplace) un verrou <IP, Email> pour LOGIN_LOCK_SECONDS secondes.
+ */
+function poser_verrou_login(string $email, string $ip): void
+{
+    if (!defined('LOGIN_LOCK_SECONDS')) {
+        return;
+    }
+    try {
+        $pdo = get_pdo();
+        $duree = (int) LOGIN_LOCK_SECONDS;
+        $stmt = $pdo->prepare(
+            'INSERT INTO login_blocages (ip, email, bloque_jusqu_a)
+             VALUES (:ip, :email, DATE_ADD(NOW(), INTERVAL :d SECOND))
+             ON DUPLICATE KEY UPDATE bloque_jusqu_a = DATE_ADD(NOW(), INTERVAL :d2 SECOND)'
+        );
+        $stmt->execute([
+            'ip'    => substr($ip, 0, 45),
+            'email' => normaliser_email($email),
+            'd'     => $duree,
+            'd2'    => $duree,
+        ]);
+    } catch (Throwable) {
+    }
+}
+
+/**
+ * Supprime le verrou <IP, Email> (appelé après un succès ou une expiration).
+ */
+function supprimer_verrou_login(string $email, string $ip): void
+{
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare(
+            'DELETE FROM login_blocages WHERE ip = :ip AND email = :email'
+        );
+        $stmt->execute([
+            'ip'    => substr($ip, 0, 45),
+            'email' => normaliser_email($email),
+        ]);
+    } catch (Throwable) {
+    }
+}
+
+/**
+ * Politique de fallback en fenêtre glissante.
+ * Ne conserve que l'axe <IP, Email> comme seuil de détection redondant.
+ * Les axes globaux <IP> et <Email> sont réintroduits via des verrous
+ * explicites dans la phase d'escalade (Défaut 3).
+ *
+ * @return array{bloque:bool, secondes_restantes:int}
+ */
+function statut_blocage_login_detail(string $email): array
+{
+    try {
+        $pdo = get_pdo();
+        $email = normaliser_email($email);
+        $ip    = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM tentatives_login_detail
+             WHERE ip = :ip AND email = :email AND succes = 0
+               AND tentative_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
+        );
+        $stmt->execute(['ip' => $ip, 'email' => $email]);
+        if ((int) $stmt->fetchColumn() >= (int) RL_IP_EMAIL_MAX_5MIN) {
+            return ['bloque' => true, 'secondes_restantes' => (int) RL_IP_EMAIL_BLOCK_SEC];
+        }
+
+        return ['bloque' => false, 'secondes_restantes' => 0];
+    } catch (Throwable) {
+        return ['bloque' => false, 'secondes_restantes' => 0];
+    }
 }
 
 function ralentir_exponentiel(int $nbEchecsPrecedents): void
@@ -425,87 +545,163 @@ function ralentir_exponentiel(int $nbEchecsPrecedents): void
 
 function connecter_utilisateur(string $email, string $motDePasse): array
 {
-    demarrer_session_securisee();
-    $email = normaliser_email($email);
-    $statut = statut_blocage_login($email);
-
-    if (rand(1, 100) === 1) {
-        purger_journal_ancien();
-    }
-
-    if ($statut['bloque']) {
-        ralentir_exponentiel(LOGIN_MAX_FAILURES);
-        $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-        journaliser_action(null, 'connexion_echec', $emailMasque . ' (bloqué)');
-        return [
-            'ok' => false,
-            'bloque' => true,
-            'message' => 'Compte temporairement bloqué. Réessayez dans ' . $statut['secondes_restantes'] . ' seconde(s).',
-        ];
-    }
-
-    $nbEchecsPrecedents = 0;
     try {
-        $pdo = get_pdo();
-        $stmtFail = $pdo->prepare('SELECT nb_tentatives FROM tentatives_login WHERE email = :email LIMIT 1');
-        $stmtFail->execute(['email' => $email]);
-        $row = $stmtFail->fetch();
-        if (is_array($row)) {
-            $nbEchecsPrecedents = (int) $row['nb_tentatives'];
+        demarrer_session_securisee();
+        $email = normaliser_email($email);
+        $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+
+        // PRIORITÉ 1 : VERROU EXPLICITE <IP, Email> sur table login_blocages.
+        // Si actif → réponse BLOQUÉ immédiate (le délai est précis, 1 décrément/sec),
+        // SANS évaluer les axes en fenêtres ni faire de max avec d'autres délais.
+        $statutVerrou = statut_verrou_login($email, $ip);
+        if ($statutVerrou['bloque']) {
+            if (rand(1, 100) === 1) {
+                purger_journal_ancien();
+                purger_tentatives_login_anciennes();
+                try {
+                    get_pdo()->exec('DELETE FROM login_blocages WHERE bloque_jusqu_a <= NOW()');
+                } catch (Throwable) {
+                }
+            }
+            ralentir_exponentiel(LOGIN_MAX_FAILURES);
+            $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
+            journaliser_action(null, 'connexion_echec', $emailMasque . ' (bloqué)');
+            $secondes = (int) $statutVerrou['secondes_restantes'];
+            return [
+                'ok' => false,
+                'bloque' => true,
+                'secondes_restantes' => $secondes,
+                'message' => 'Compte temporairement bloqué. Réessayez dans ' . $secondes . ' seconde(s).',
+            ];
         }
-    } catch (Throwable) {
-    }
 
-    $user = trouver_utilisateur_par_email($email);
-    $mpOk = false;
+        if (rand(1, 100) === 1) {
+            purger_journal_ancien();
+            purger_tentatives_login_anciennes();
+            // Purge aussi les verrous explicitement expirés de login_blocages
+            try {
+                get_pdo()->exec('DELETE FROM login_blocages WHERE bloque_jusqu_a <= NOW()');
+            } catch (Throwable) {
+            }
+        }
 
-    if (is_array($user)) {
-        $mpOk = password_verify($motDePasse, (string) $user['hash_mdp']);
-    } else {
-        $fakeHash = defined('LOGIN_DUMMY_BCRYPT_HASH')
-            ? (string) LOGIN_DUMMY_BCRYPT_HASH
-            : '$2y$12$DRjm/5F3C1g3QVtR0k1WGOxhpBpR.G0a1.3nVh19XxZz7f7q5b6Oa';
-        password_verify($motDePasse, $fakeHash);
-    }
+        // PRIORITÉ 2 : politique en fenêtre (redondance, fallback).
+        // (Réduite à l'unique axe <IP, Email> 3/5 min → max 60 s.
+        //  Axes globaux IP / Email réintroduits dans la phase d'escalade Défaut 3.)
+        $statut = statut_blocage_login_detail($email);
+        // Fallback sûr vers ancienne table si la nouvelle retourne un échec silencieux (0,0)
+        if ($statut === ['bloque' => false, 'secondes_restantes' => 0]
+            && function_exists('statut_blocage_login')
+        ) {
+            $statutAncien = statut_blocage_login($email);
+            if ($statutAncien['bloque']) {
+                $statut = $statutAncien;
+            }
+        }
+        if (!empty($statut['bloque'])) {
+            // Plafonnement à 60 s pour éviter un affichage abusif 1 h / 30 min
+            // en attendant l'escalade (Défaut 3) qui posera des verrous explicites.
+            $secondes = min((int) ($statut['secondes_restantes'] ?? RL_IP_EMAIL_BLOCK_SEC), (int) RL_IP_EMAIL_BLOCK_SEC);
+            ralentir_exponentiel(LOGIN_MAX_FAILURES);
+            $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
+            journaliser_action(null, 'connexion_echec', $emailMasque . ' (bloqué)');
+            return [
+                'ok' => false,
+                'bloque' => true,
+                'secondes_restantes' => $secondes,
+                'message' => 'Compte temporairement bloqué. Réessayez dans ' . $secondes . ' seconde(s).',
+            ];
+        }
 
-    if (!is_array($user) || !$mpOk) {
-        enregistrer_echec_login($email);
-        ralentir_exponentiel($nbEchecsPrecedents + 1);
-        $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-        journaliser_action(null, 'connexion_echec', $emailMasque);
-        return ['ok' => false, 'bloque' => false, 'message' => 'Identifiants invalides.'];
-    }
+        $nbEchecsPrecedents = 0;
+        try {
+            $pdo = get_pdo();
+            $stmtFail = $pdo->prepare('SELECT nb_tentatives FROM tentatives_login WHERE email = :email LIMIT 1');
+            $stmtFail->execute(['email' => $email]);
+            $row = $stmtFail->fetch();
+            if (is_array($row)) {
+                $nbEchecsPrecedents = (int) $row['nb_tentatives'];
+            }
+        } catch (Throwable) {
+        }
 
-    reinitialiser_tentatives_login($email);
-    session_regenerate_id(true);
+        $user = trouver_utilisateur_par_email($email);
+        $mpOk = false;
 
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    if (empty($_SESSION['ajax_token']) || !is_string($_SESSION['ajax_token'])) {
-        $_SESSION['ajax_token'] = bin2hex(random_bytes(32));
-    }
+        if (is_array($user)) {
+            $mpOk = password_verify($motDePasse, (string) $user['hash_mdp']);
+        } else {
+            $fakeHash = defined('LOGIN_DUMMY_BCRYPT_HASH')
+                ? (string) LOGIN_DUMMY_BCRYPT_HASH
+                : '$2y$12$DRjm/5F3C1g3QVtR0k1WGOxhpBpR.G0a1.3nVh19XxZz7f7q5b6Oa';
+            password_verify($motDePasse, $fakeHash);
+        }
 
-    $cle = deriver_cle_chiffrement($motDePasse, (string) $user['sel_pbkdf2']);
+        if (!is_array($user) || !$mpOk) {
+            enregistrer_echec_login($email);
+            enregistrer_tentative_login_detail($email, $ip, false);
 
-    if ((int) $user['totp_active'] === 1) {
-        $_SESSION['totp_pending'] = true;
-        $_SESSION['totp_user_id'] = (int) $user['id'];
-        $_SESSION['totp_email'] = (string) $user['email'];
-        $_SESSION['totp_fail_count'] = 0;
+            // Pose un VERROU EXPLICITE 60 s si on atteint LOGIN_LOCK_MAX_FAILURES
+            // sur l'axe <IP, Email> dans les 5 dernières minutes
+            try {
+                $pdo = get_pdo();
+                $seuil = defined('LOGIN_LOCK_MAX_FAILURES')
+                    ? (int) LOGIN_LOCK_MAX_FAILURES
+                    : (int) RL_IP_EMAIL_MAX_5MIN;
+                $stmt = $pdo->prepare(
+                    "SELECT COUNT(*) FROM tentatives_login_detail
+                     WHERE ip = :ip AND email = :email AND succes = 0
+                       AND tentative_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
+                );
+                $stmt->execute(['ip' => $ip, 'email' => $email]);
+                $nbEchecs5min = (int) $stmt->fetchColumn();
+                if ($nbEchecs5min >= $seuil) {
+                    poser_verrou_login($email, $ip);
+                }
+            } catch (Throwable) {
+            }
+
+            ralentir_exponentiel($nbEchecsPrecedents + 1);
+            $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
+            journaliser_action(null, 'connexion_echec', $emailMasque);
+            return ['ok' => false, 'bloque' => false, 'message' => 'Identifiants invalides.'];
+        }
+
+        reinitialiser_tentatives_login($email);
+        supprimer_verrou_login($email, $ip);
+        enregistrer_tentative_login_detail($email, $ip, true);
+        session_regenerate_id(true);
+
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        if (empty($_SESSION['ajax_token']) || !is_string($_SESSION['ajax_token'])) {
+            $_SESSION['ajax_token'] = bin2hex(random_bytes(32));
+        }
+
+        $cle = deriver_cle_chiffrement($motDePasse, (string) $user['sel_pbkdf2']);
+
+        if ((int) $user['totp_active'] === 1) {
+            $_SESSION['totp_pending'] = true;
+            $_SESSION['totp_user_id'] = (int) $user['id'];
+            $_SESSION['totp_email'] = (string) $user['email'];
+            $_SESSION['totp_fail_count'] = 0;
+            $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
+            unset($_SESSION['user_id'], $_SESSION['email']);
+            $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
+            journaliser_action((int) $user['id'], 'connexion_mdp_ok_totp_attendu', $emailMasque);
+            return ['ok' => true, 'bloque' => false, 'totp_required' => true, 'message' => 'Mot de passe correct. Vérification TOTP requise.'];
+        }
+
         $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
-        unset($_SESSION['user_id'], $_SESSION['email']);
+        $_SESSION['user_id'] = (int) $user['id'];
+        $_SESSION['email'] = (string) $user['email'];
+
         $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-        journaliser_action((int) $user['id'], 'connexion_mdp_ok_totp_attendu', $emailMasque);
-        return ['ok' => true, 'bloque' => false, 'totp_required' => true, 'message' => 'Mot de passe correct. Vérification TOTP requise.'];
+        journaliser_action((int) $user['id'], 'connexion_ok', $emailMasque);
+
+        return ['ok' => true, 'bloque' => false, 'message' => 'Connexion réussie.'];
+    } catch (Throwable) {
+        return ['ok' => false, 'bloque' => false, 'message' => 'Service temporairement indisponible. Réessayez dans quelques instants.'];
     }
-
-    $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
-    $_SESSION['user_id'] = (int) $user['id'];
-    $_SESSION['email'] = (string) $user['email'];
-
-    $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-    journaliser_action((int) $user['id'], 'connexion_ok', $emailMasque);
-
-    return ['ok' => true, 'bloque' => false, 'message' => 'Connexion réussie.'];
 }
 
 function deconnecter_utilisateur(): void

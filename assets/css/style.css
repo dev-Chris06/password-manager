@@ -476,3 +476,29 @@ input[type="file"] {
     white-space: nowrap;
 }
 
+.backup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin-top: 8px;
+}
+
+.backup-col {
+    background: var(--panel-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.backup-col h2 {
+    margin-top: 0;
+    font-size: 1.25rem;
+}
+
+@media (max-width: 720px) {
+    .backup-grid {
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+}
+

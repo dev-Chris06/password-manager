@@ -18,7 +18,7 @@ La fonction `statut_blocage_login()` calcule le temps restant avec `TIMESTAMPDIF
 
 En plus du blocage par email, l'application compte les tentatives récentes par adresse IP. Si une même IP atteint 20 tentatives dans la dernière heure, la connexion est refusée temporairement avec un délai indicatif de 3600 secondes.
 
-La colonne `ip` et l'index `idx_tentatives_ip` sont donc nécessaires dans `tentatives_login`. Ils sont présents dans `database.sql` pour les nouvelles installations et dans `migrations/add_ip_to_tentatives_login.sql` pour les bases déjà créées.
+La colonne `ip` et l'index `idx_tentatives_ip` sont créés par `database.sql`.
 
 ## Flux
 

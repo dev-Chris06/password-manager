@@ -94,7 +94,6 @@ ajax/                # Endpoints JSON (déchiffrement, export/import, remplissag
 assets/css/          # style.css
 assets/js/           # dashboard, generateur, force_mdp, backup
 docs/                # MENACE, TEST_GUIDE, RATE_LIMITING
-migrations/          # Scripts SQL de mise à jour de BDD
 extension-chrome/    # Manifest V3 + content/popup/background
 index.php            # Point d'entrée + redirect login/dashboard
 INSTALL.md           # Guide d'installation pas à pas
