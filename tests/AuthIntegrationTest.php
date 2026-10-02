@@ -1,7 +1,11 @@
 <?php
 declare(strict_types=1);
 
+
+
 use PHPUnit\Framework\TestCase;
+
+$_testPdo = null;
 
 final class AuthIntegrationTest extends TestCase
 {
@@ -10,6 +14,8 @@ final class AuthIntegrationTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         self::$pdo = new PDO('sqlite::memory:');
+        global $_testPdo;
+        $_testPdo = self::$pdo;
         self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
@@ -34,15 +40,19 @@ final class AuthIntegrationTest extends TestCase
         )');
 
         if (!function_exists('get_pdo')) {
-            function get_pdo(): PDO { return AuthIntegrationTest::$pdo; }
+            function get_pdo(): PDO {
+                global $_testPdo;
+                assert($_testPdo instanceof PDO, 'Le mock PDO n\'a pas été initialisé (appelez setUpBeforeClass avant get_pdo()).');
+                return $_testPdo;
+            }
         }
 
-        define('CRYPTO_METHOD_GCM', 'aes-256-gcm');
-        define('PBKDF2_ITERATIONS', 10000);
-        define('BCRYPT_COST', 10);
-        define('APP_URL', 'http://localhost');
-        define('SESSION_TIMEOUT_INACTIVITE_SEC', 3600);
-        define('SESSION_TIMEOUT_ABSOLU_SEC', 86400);
+        if (!defined('CRYPTO_METHOD_GCM')) define('CRYPTO_METHOD_GCM', 'aes-256-gcm');
+        if (!defined('PBKDF2_ITERATIONS')) define('PBKDF2_ITERATIONS', 10000);
+        if (!defined('BCRYPT_COST')) define('BCRYPT_COST', 10);
+        if (!defined('APP_URL')) define('APP_URL', 'http://localhost');
+        if (!defined('SESSION_TIMEOUT_INACTIVITE_SEC')) define('SESSION_TIMEOUT_INACTIVITE_SEC', 3600);
+        if (!defined('SESSION_TIMEOUT_ABSOLU_SEC')) define('SESSION_TIMEOUT_ABSOLU_SEC', 86400);
 
         require_once __DIR__ . '/../includes/crypto.php';
         require_once __DIR__ . '/../includes/entrees.php';

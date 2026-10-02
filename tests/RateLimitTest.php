@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+$_testPdo = null;
+
 final class RateLimitTest extends TestCase
 {
     private static ?PDO $pdo = null;
@@ -10,6 +12,8 @@ final class RateLimitTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         self::$pdo = new PDO('sqlite::memory:');
+        global $_testPdo;
+        $_testPdo = self::$pdo;
         self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
@@ -21,17 +25,15 @@ final class RateLimitTest extends TestCase
             bloque_jusqu_a DATETIME
         )');
 
-        define('LOGIN_MAX_FAILURES', 3);
-        define('LOGIN_BLOCK_SECONDS', 60);
+        if (!defined('LOGIN_MAX_FAILURES')) define('LOGIN_MAX_FAILURES', 3);
+        if (!defined('LOGIN_BLOCK_SECONDS')) define('LOGIN_BLOCK_SECONDS', 60);
 
         if (!function_exists('get_pdo')) {
-            function get_pdo(): PDO { return RateLimitTest::$pdo; }
-        }
-        if (!function_exists('journaliser_action')) {
-            function journaliser_action(): void {}
-        }
-        if (!function_exists('normaliser_email')) {
-            function normaliser_email(string $e): string { return strtolower(trim($e)); }
+            function get_pdo(): PDO {
+                global $_testPdo;
+                assert($_testPdo instanceof PDO, 'Le mock PDO n\'a pas été initialisé (appelez setUpBeforeClass avant get_pdo()).');
+                return $_testPdo;
+            }
         }
     }
 
