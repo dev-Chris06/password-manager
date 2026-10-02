@@ -18,7 +18,12 @@ afficher_debut_page('Sauvegarde du coffre');
     <h2>Exporter le coffre</h2>
     <form id="export-form" class="form">
         <?= csrf_input() ?>
-        <button type="submit" class="btn btn-primary" id="btn-export">Télécharger la sauvegarde</button>
+        <label for="mdp_actuel_export">Mot de passe maître actuel (requis pour exporter)</label>
+        <input type="password" id="mdp_actuel_export" name="mot_de_passe_actuel" minlength="12" placeholder="Votre mot de passe maître" required autocomplete="current-password">
+        <small>Pour votre sécurité, une re-saisie du mot de passe maître est requise avant tout export du coffre.</small>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="btn-export">Télécharger la sauvegarde</button>
+        </div>
     </form>
 
     <hr>
@@ -43,7 +48,7 @@ afficher_debut_page('Sauvegarde du coffre');
     <div id="import-result" class="alert alert-hidden"></div>
 </section>
 
-<script>
+<script nonce="<?= e(csp_nonce()) ?>">
 window.APP_BASE_URL = '<?= e(APP_URL) ?>';
 </script>
 

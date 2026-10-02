@@ -34,7 +34,6 @@ function generer_code_totp(string $secret, int $time = null): string
     $counterBytes = pack('J', $counter);
     $counterBytes = str_pad(substr($counterBytes, -8), 8, "\x00", STR_PAD_LEFT);
     
-    // Base32 decoding
     $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     $secret = strtoupper($secret);
     $secretBytes = '';
@@ -74,21 +73,153 @@ function generer_code_totp(string $secret, int $time = null): string
     return str_pad((string) $otp, 6, '0', STR_PAD_LEFT);
 }
 
-function verifier_code_totp(string $secret, string $code, int $window = 1): bool
+function verifier_code_totp(string $secret, string $code, ?int &$slotUtilise = null, int $window = 1): bool
 {
     $time = time();
     $timeStep = 30;
+    $slotUtilise = null;
     
     for ($i = -$window; $i <= $window; $i++) {
         $testTime = $time + ($i * $timeStep);
+        $slot = (int) floor($testTime / $timeStep);
         $expectedCode = generer_code_totp($secret, $testTime);
         
         if (hash_equals($expectedCode, $code)) {
+            $slotUtilise = $slot;
             return true;
         }
     }
     
     return false;
+}
+
+function obtenir_last_totp_slot(int $userId): int
+{
+    $stmt = get_pdo()->prepare('SELECT last_totp_slot FROM utilisateurs WHERE id = :id');
+    $stmt->execute(['id' => $userId]);
+    $row = $stmt->fetch();
+    if (!is_array($row)) {
+        return 0;
+    }
+    return (int) ($row['last_totp_slot'] ?? 0);
+}
+
+function mettre_a_jour_last_totp_slot(int $userId, int $slot): bool
+{
+    $pdo = get_pdo();
+    try {
+        $pdo->beginTransaction();
+        $stmtLock = $pdo->prepare('SELECT last_totp_slot FROM utilisateurs WHERE id = :id FOR UPDATE');
+        $stmtLock->execute(['id' => $userId]);
+        $row = $stmtLock->fetch();
+        if (!is_array($row)) {
+            $pdo->rollBack();
+            return false;
+        }
+        $actuel = (int) ($row['last_totp_slot'] ?? 0);
+        if ($slot <= $actuel) {
+            $pdo->rollBack();
+            return false;
+        }
+        $stmtUpd = $pdo->prepare('UPDATE utilisateurs SET last_totp_slot = :slot WHERE id = :id');
+        $ok = $stmtUpd->execute(['slot' => $slot, 'id' => $userId]);
+        $pdo->commit();
+        return $ok;
+    } catch (Throwable) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return false;
+    }
+}
+
+function generer_codes_recuperation_totp(int $nombre = 10): array
+{
+    $codes = [];
+    for ($i = 0; $i < $nombre; $i++) {
+        $blocs = [];
+        for ($b = 0; $b < 4; $b++) {
+            $blocs[] = strtoupper(bin2hex(random_bytes(2)));
+        }
+        $codes[] = implode('-', $blocs);
+    }
+    return $codes;
+}
+
+function enregistrer_codes_recuperation_totp(int $userId, array $clairs): bool
+{
+    $pdo = get_pdo();
+    try {
+        $pdo->beginTransaction();
+        $stmtDel = $pdo->prepare('DELETE FROM totp_recovery_codes WHERE user_id = :user_id');
+        $stmtDel->execute(['user_id' => $userId]);
+        $stmtIns = $pdo->prepare(
+            'INSERT INTO totp_recovery_codes (user_id, code_hash, created_at)
+             VALUES (:user_id, :code_hash, NOW())'
+        );
+        foreach ($clairs as $code) {
+            $hash = password_hash(str_replace('-', '', $code), PASSWORD_BCRYPT, ['cost' => 12]);
+            $stmtIns->execute([
+                'user_id' => $userId,
+                'code_hash' => $hash,
+            ]);
+        }
+        $pdo->commit();
+        return true;
+    } catch (Throwable) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return false;
+    }
+}
+
+function utiliser_code_recuperation_totp(int $userId, string $codeSaisi): bool
+{
+    $codeNormalise = str_replace(['-', ' '], '', strtoupper($codeSaisi));
+    if (strlen($codeNormalise) < 8) {
+        return false;
+    }
+    $pdo = get_pdo();
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare(
+            'SELECT id, code_hash FROM totp_recovery_codes
+             WHERE user_id = :user_id AND used_at IS NULL
+             FOR UPDATE'
+        );
+        $stmt->execute(['user_id' => $userId]);
+        $candidats = $stmt->fetchAll();
+        $trouveId = null;
+        foreach ($candidats as $c) {
+            if (password_verify($codeNormalise, (string) $c['code_hash'])) {
+                $trouveId = (int) $c['id'];
+                break;
+            }
+        }
+        if ($trouveId === null) {
+            $pdo->rollBack();
+            return false;
+        }
+        $stmtUpd = $pdo->prepare(
+            'UPDATE totp_recovery_codes SET used_at = NOW() WHERE id = :id'
+        );
+        $stmtUpd->execute(['id' => $trouveId]);
+        $pdo->commit();
+        journaliser_action($userId, 'totp_code_recuperation_utilise', '#' . $trouveId);
+        return true;
+    } catch (Throwable) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return false;
+    }
+}
+
+function supprimer_tous_codes_recuperation_totp(int $userId): void
+{
+    $stmt = get_pdo()->prepare('DELETE FROM totp_recovery_codes WHERE user_id = :user_id');
+    $stmt->execute(['user_id' => $userId]);
 }
 
 function totp_actif_pour_utilisateur(int $userId): bool
@@ -113,27 +244,79 @@ function obtenir_secret_totp(int $userId): ?string
     return (string) $result['totp_secret'];
 }
 
-function activer_totp_pour_utilisateur(int $userId, string $secret): bool
+function obtenir_hash_mdp_utilisateur(int $userId): ?string
 {
-    $stmt = get_pdo()->prepare(
-        'UPDATE utilisateurs 
-         SET totp_secret = :secret, totp_active = 1 
-         WHERE id = :id'
-    );
-    
-    return $stmt->execute([
-        'secret' => $secret,
-        'id' => $userId,
-    ]);
+    $stmt = get_pdo()->prepare('SELECT hash_mdp FROM utilisateurs WHERE id = :id');
+    $stmt->execute(['id' => $userId]);
+    $row = $stmt->fetch();
+    if (!is_array($row) || !isset($row['hash_mdp'])) {
+        return null;
+    }
+    return (string) $row['hash_mdp'];
+}
+
+function activer_totp_pour_utilisateur(int $userId, string $secret, ?int $slotInitial = null): bool
+{
+    $pdo = get_pdo();
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare(
+            'UPDATE utilisateurs 
+             SET totp_secret = :secret, totp_active = 1'
+             . ($slotInitial !== null ? ', last_totp_slot = :slot ' : ' ')
+             . 'WHERE id = :id'
+        );
+        $params = [
+            'secret' => $secret,
+            'id' => $userId,
+        ];
+        if ($slotInitial !== null) {
+            $params['slot'] = $slotInitial;
+        }
+        $ok = $stmt->execute($params);
+        if (!$ok) {
+            $pdo->rollBack();
+            return false;
+        }
+        $codes = generer_codes_recuperation_totp(10);
+        $okCodes = enregistrer_codes_recuperation_totp($userId, $codes);
+        if (!$okCodes) {
+            $pdo->rollBack();
+            return false;
+        }
+        $_SESSION['totp_recovery_codes_affichage'] = $codes;
+        $pdo->commit();
+        return true;
+    } catch (Throwable) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return false;
+    }
 }
 
 function desactiver_totp_pour_utilisateur(int $userId): bool
 {
-    $stmt = get_pdo()->prepare(
-        'UPDATE utilisateurs 
-         SET totp_secret = NULL, totp_active = 0 
-         WHERE id = :id'
-    );
-    
-    return $stmt->execute(['id' => $userId]);
+    $pdo = get_pdo();
+    try {
+        $pdo->beginTransaction();
+        $stmt = get_pdo()->prepare(
+            'UPDATE utilisateurs 
+             SET totp_secret = NULL, totp_active = 0, last_totp_slot = 0
+             WHERE id = :id'
+        );
+        $ok = $stmt->execute(['id' => $userId]);
+        if (!$ok) {
+            $pdo->rollBack();
+            return false;
+        }
+        supprimer_tous_codes_recuperation_totp($userId);
+        $pdo->commit();
+        return true;
+    } catch (Throwable) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return false;
+    }
 }

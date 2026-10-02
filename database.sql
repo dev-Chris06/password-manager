@@ -11,9 +11,22 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
     sel_pbkdf2 VARCHAR(128) NOT NULL,
     totp_secret VARCHAR(255) NULL DEFAULT NULL,
     totp_active TINYINT(1) NOT NULL DEFAULT 0,
-    totp_pending TINYINT(1) NOT NULL DEFAULT 0,
+    last_totp_slot BIGINT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_utilisateurs_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS totp_recovery_codes (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    code_hash VARCHAR(255) NOT NULL,
+    used_at DATETIME NULL DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_rc_user (user_id),
+    UNIQUE KEY uq_rc_user_codehash (user_id, code_hash),
+    CONSTRAINT fk_rc_user
+        FOREIGN KEY (user_id) REFERENCES utilisateurs(id)
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS entrees (

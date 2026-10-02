@@ -3,7 +3,7 @@
   "name": "Gestionnaire MDP - Remplissage automatique",
   "version": "1.0.4",
   "description": "Remplit les identifiants depuis le gestionnaire de mots de passe local PHP.",
-  "permissions": ["activeTab", "storage", "cookies"],
+  "permissions": ["activeTab", "storage"],
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*"

@@ -110,6 +110,8 @@ try {
         'message' => sprintf('%d entrée(s) importée(s). %d doublon(s) ignoré(s).', $importees, $doublons),
         'importees' => $importees,
         'doublons' => $doublons,
+        'csrf_token' => csrf_token(),
+        'ajax_token' => (string) ($_SESSION['ajax_token'] ?? ''),
     ]);
 } catch (Throwable $e) {
     http_response_code(500);

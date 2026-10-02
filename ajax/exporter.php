@@ -21,6 +21,22 @@ if (!verifier_csrf($_POST['csrf_token'] ?? null)) {
 exiger_authentification();
 
 $userId = id_utilisateur_connecte();
+$mdpFourni = (string) ($_POST['mot_de_passe_actuel'] ?? '');
+
+if ($mdpFourni === '') {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'Mot de passe maître requis pour exporter.', 'message' => 'Mot de passe maître requis.']);
+    exit;
+}
+
+$hashMdp = obtenir_hash_mdp_utilisateur($userId);
+if ($hashMdp === null || !password_verify($mdpFourni, $hashMdp)) {
+    journaliser_action($userId, 'export_echec_mdp', '');
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'Mot de passe incorrect.', 'message' => 'Mot de passe incorrect.']);
+    exit;
+}
+
 $cle = cle_chiffrement_session();
 
 try {

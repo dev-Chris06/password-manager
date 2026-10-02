@@ -55,13 +55,23 @@
                 }
 
                 await copyText(data.password);
-                button.textContent = 'Copié';
+                button.textContent = 'Copié (auto-efface dans 15 s)';
+
+                window.setTimeout(() => {
+                    copyText('');
+                    button.textContent = originalText;
+                }, 15000);
             } catch (error) {
                 button.textContent = 'Erreur';
             } finally {
                 window.setTimeout(() => {
                     button.disabled = false;
-                    button.textContent = originalText;
+                    if (button.textContent === originalText) {
+                        return;
+                    }
+                    if (!button.textContent.startsWith('Copié')) {
+                        button.textContent = originalText;
+                    }
                 }, 1600);
             }
         });

@@ -10,18 +10,55 @@ function utiliser_session_extension_si_presente(): void
         return;
     }
 
-    $sessionId = $_SERVER['HTTP_X_GESTIONNAIRE_SESSION'] ?? '';
-    if (!is_string($sessionId) || preg_match('/^[A-Za-z0-9,-]{16,128}$/', $sessionId) !== 1) {
+    $ajaxToken = $_SERVER['HTTP_X_AJAX_TOKEN'] ?? '';
+    if (!is_string($ajaxToken) || $ajaxToken === '') {
         return;
     }
 
     session_name('gestionnaire_mdp_session');
-    session_id($sessionId);
+}
+
+function appliquer_timeout_session(): void
+{
+    $now = time();
+
+    if (defined('SESSION_TIMEOUT_ABSOLU_SEC') && isset($_SESSION['_session_created'])) {
+        if (($now - (int) $_SESSION['_session_created']) > (int) SESSION_TIMEOUT_ABSOLU_SEC) {
+            $wasLogged = !empty($_SESSION['user_id']);
+            $_SESSION = [];
+            @session_regenerate_id(true);
+            session_start();
+            if ($wasLogged) {
+                header('Location: ' . APP_URL . '/pages/login.php?e=session_timeout');
+                exit;
+            }
+            return;
+        }
+    }
+    if (!isset($_SESSION['_session_created'])) {
+        $_SESSION['_session_created'] = $now;
+    }
+
+    if (defined('SESSION_TIMEOUT_INACTIVITE_SEC') && isset($_SESSION['_last_activity'])) {
+        if (($now - (int) $_SESSION['_last_activity']) > (int) SESSION_TIMEOUT_INACTIVITE_SEC) {
+            $wasLogged = !empty($_SESSION['user_id']);
+            $_SESSION = [];
+            @session_regenerate_id(true);
+            session_start();
+            if ($wasLogged) {
+                header('Location: ' . APP_URL . '/pages/login.php?e=inactivite');
+                exit;
+            }
+            return;
+        }
+    }
+    $_SESSION['_last_activity'] = $now;
 }
 
 function demarrer_session_securisee(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
+        appliquer_timeout_session();
         return;
     }
 
@@ -45,6 +82,11 @@ function demarrer_session_securisee(): void
     if (empty($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
+    if (empty($_SESSION['ajax_token']) || !is_string($_SESSION['ajax_token'])) {
+        $_SESSION['ajax_token'] = bin2hex(random_bytes(32));
+    }
+
+    appliquer_timeout_session();
 }
 
 function csrf_token(): string
@@ -253,7 +295,6 @@ function statut_blocage_login(string $email): array
     $email = normaliser_email($email);
     $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
     
-    // Vérifier le blocage par email
     $stmt = $pdo->prepare(
         "SELECT nb_tentatives, bloque_jusqu_a,
             CASE
@@ -284,7 +325,6 @@ function statut_blocage_login(string $email): array
 
     $seconds = max(0, (int) $row['secondes_restantes']);
 
-    // Vérifier le blocage par IP (rate limiting global par IP)
     $stmtIp = $pdo->prepare(
         "SELECT COUNT(*) as count
          FROM tentatives_login
@@ -294,7 +334,6 @@ function statut_blocage_login(string $email): array
     $stmtIp->execute(['ip' => $ip]);
     $ipCount = (int) $stmtIp->fetch()['count'];
     
-    // Si plus de 20 tentatives depuis la même IP dans la dernière heure, bloquer
     if ($ipCount >= 20) {
         return ['bloque' => true, 'secondes_restantes' => 3600];
     }
@@ -309,8 +348,7 @@ function enregistrer_echec_login(string $email): void
     $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
     $maxTentatives = (int) LOGIN_MAX_FAILURES;
     $blocageSecondes = (int) LOGIN_BLOCK_SECONDS;
-    
-    // Tenter d'insérer avec IP (si la colonne existe), sinon insérer sans IP
+
     try {
         $stmt = $pdo->prepare(
             "INSERT INTO tentatives_login (email, ip, nb_tentatives, derniere_tentative, bloque_jusqu_a)
@@ -333,7 +371,6 @@ function enregistrer_echec_login(string $email): void
         );
         $stmt->execute(['email' => $email, 'ip' => $ip]);
     } catch (PDOException $e) {
-        // Si la colonne ip n'existe pas, utiliser l'ancienne requête sans IP
         if (str_contains($e->getMessage(), 'Unknown column')) {
             $stmt = $pdo->prepare(
                 "INSERT INTO tentatives_login (email, nb_tentatives, derniere_tentative, bloque_jusqu_a)
@@ -378,6 +415,14 @@ function reinitialiser_tentatives_login(string $email): void
     $stmt->execute(['email' => normaliser_email($email)]);
 }
 
+function ralentir_exponentiel(int $nbEchecsPrecedents): void
+{
+    $delaisMicro = [0, 2_000_000, 5_000_000, 15_000_000, 30_000_000, 60_000_000];
+    $index = min(max($nbEchecsPrecedents, 0), count($delaisMicro) - 1);
+    $delai = $delaisMicro[$index] + random_int(0, 500_000);
+    usleep($delai);
+}
+
 function connecter_utilisateur(string $email, string $motDePasse): array
 {
     demarrer_session_securisee();
@@ -389,6 +434,7 @@ function connecter_utilisateur(string $email, string $motDePasse): array
     }
 
     if ($statut['bloque']) {
+        ralentir_exponentiel(LOGIN_MAX_FAILURES);
         $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
         journaliser_action(null, 'connexion_echec', $emailMasque . ' (bloqué)');
         return [
@@ -398,10 +444,33 @@ function connecter_utilisateur(string $email, string $motDePasse): array
         ];
     }
 
-    $user = trouver_utilisateur_par_email($email);
+    $nbEchecsPrecedents = 0;
+    try {
+        $pdo = get_pdo();
+        $stmtFail = $pdo->prepare('SELECT nb_tentatives FROM tentatives_login WHERE email = :email LIMIT 1');
+        $stmtFail->execute(['email' => $email]);
+        $row = $stmtFail->fetch();
+        if (is_array($row)) {
+            $nbEchecsPrecedents = (int) $row['nb_tentatives'];
+        }
+    } catch (Throwable) {
+    }
 
-    if (!is_array($user) || !password_verify($motDePasse, (string) $user['hash_mdp'])) {
+    $user = trouver_utilisateur_par_email($email);
+    $mpOk = false;
+
+    if (is_array($user)) {
+        $mpOk = password_verify($motDePasse, (string) $user['hash_mdp']);
+    } else {
+        $fakeHash = defined('LOGIN_DUMMY_BCRYPT_HASH')
+            ? (string) LOGIN_DUMMY_BCRYPT_HASH
+            : '$2y$12$DRjm/5F3C1g3QVtR0k1WGOxhpBpR.G0a1.3nVh19XxZz7f7q5b6Oa';
+        password_verify($motDePasse, $fakeHash);
+    }
+
+    if (!is_array($user) || !$mpOk) {
         enregistrer_echec_login($email);
+        ralentir_exponentiel($nbEchecsPrecedents + 1);
         $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
         journaliser_action(null, 'connexion_echec', $emailMasque);
         return ['ok' => false, 'bloque' => false, 'message' => 'Identifiants invalides.'];
@@ -410,21 +479,26 @@ function connecter_utilisateur(string $email, string $motDePasse): array
     reinitialiser_tentatives_login($email);
     session_regenerate_id(true);
 
-    $cle = deriver_cle_chiffrement($motDePasse, (string) $user['sel_pbkdf2']);
-    $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    if (empty($_SESSION['ajax_token']) || !is_string($_SESSION['ajax_token'])) {
+        $_SESSION['ajax_token'] = bin2hex(random_bytes(32));
+    }
 
-    migrer_entrees_legacy_cbc_vers_gcm((int) $user['id'], $cle);
+    $cle = deriver_cle_chiffrement($motDePasse, (string) $user['sel_pbkdf2']);
 
     if ((int) $user['totp_active'] === 1) {
         $_SESSION['totp_pending'] = true;
         $_SESSION['totp_user_id'] = (int) $user['id'];
-        $_SESSION['email'] = (string) $user['email'];
+        $_SESSION['totp_email'] = (string) $user['email'];
+        $_SESSION['totp_fail_count'] = 0;
+        $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
+        unset($_SESSION['user_id'], $_SESSION['email']);
         $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
         journaliser_action((int) $user['id'], 'connexion_mdp_ok_totp_attendu', $emailMasque);
         return ['ok' => true, 'bloque' => false, 'totp_required' => true, 'message' => 'Mot de passe correct. Vérification TOTP requise.'];
     }
 
+    $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['email'] = (string) $user['email'];
 
@@ -461,38 +535,6 @@ function deconnecter_utilisateur(): void
     }
 
     session_destroy();
-}
-
-function migrer_entrees_legacy_cbc_vers_gcm(int $userId, string $cleBinaire): void
-{
-    $pdo = get_pdo();
-    $select = $pdo->prepare(
-        "SELECT id, mdp_chiffre, iv
-         FROM entrees
-         WHERE user_id = :user_id AND (auth_tag IS NULL OR auth_tag = '')"
-    );
-    $select->execute(['user_id' => $userId]);
-    $update = $pdo->prepare(
-        'UPDATE entrees
-         SET mdp_chiffre = :mdp_chiffre, iv = :iv, auth_tag = :auth_tag
-         WHERE id = :id AND user_id = :user_id'
-    );
-
-    foreach ($select->fetchAll() as $entry) {
-        try {
-            $plain = dechiffrer_mdp_legacy_cbc((string) $entry['mdp_chiffre'], (string) $entry['iv'], $cleBinaire);
-            $encrypted = chiffrer_mdp_gcm($plain, $cleBinaire);
-            $update->execute([
-                'mdp_chiffre' => $encrypted['mdp_chiffre'],
-                'iv' => $encrypted['iv'],
-                'auth_tag' => $encrypted['auth_tag'],
-                'id' => (int) $entry['id'],
-                'user_id' => $userId,
-            ]);
-        } catch (Throwable) {
-            continue;
-        }
-    }
 }
 
 function journaliser_action(

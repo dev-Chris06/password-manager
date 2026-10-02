@@ -5,6 +5,27 @@ const PROCESSED_ATTR = "data-gestionnaire-mdp-ready";
 const EXTENSION_UI_VERSION = "v1.0.4";
 const triggerButtons = new WeakMap();
 
+const _protocol = window.location.protocol.toLowerCase();
+const _host = window.location.hostname.toLowerCase();
+const _isLocalhost = _host === "localhost" || _host === "127.0.0.1";
+const _isSecurePage = _protocol === "https:" || _isLocalhost;
+
+if (!_isSecurePage) {
+  throw new Error(
+    "Password Manager: extension inactive sur HTTP non-localhost.",
+  );
+}
+
+function estEvenementDeConfiance(event) {
+  if (!event) {
+    return false;
+  }
+  if (typeof event.isTrusted === "boolean") {
+    return event.isTrusted;
+  }
+  return true;
+}
+
 function isVisibleInput(input) {
   if (!(input instanceof HTMLInputElement)) {
     return false;
@@ -17,14 +38,18 @@ function isVisibleInput(input) {
   const rect = input.getBoundingClientRect();
   const style = window.getComputedStyle(input);
 
-  return rect.width > 0 &&
+  return (
+    rect.width > 0 &&
     rect.height > 0 &&
     style.visibility !== "hidden" &&
-    style.display !== "none";
+    style.display !== "none"
+  );
 }
 
 function findPasswordInputs(scope = document) {
-  return Array.from(scope.querySelectorAll('input[type="password"]')).filter(isVisibleInput);
+  return Array.from(scope.querySelectorAll('input[type="password"]')).filter(
+    isVisibleInput,
+  );
 }
 
 function findPasswordInput() {
@@ -32,7 +57,8 @@ function findPasswordInput() {
 }
 
 function scoreLoginInput(input, passwordInput) {
-  const name = `${input.name || ""} ${input.id || ""} ${input.autocomplete || ""} ${input.placeholder || ""}`.toLowerCase();
+  const name =
+    `${input.name || ""} ${input.id || ""} ${input.autocomplete || ""} ${input.placeholder || ""}`.toLowerCase();
   let score = 0;
 
   if (input.type === "email") {
@@ -43,11 +69,17 @@ function scoreLoginInput(input, passwordInput) {
     score += 5;
   }
 
-  if (["username", "email", "login"].some((keyword) => name.includes(keyword))) {
+  if (
+    ["username", "email", "login"].some((keyword) => name.includes(keyword))
+  ) {
     score += 5;
   }
 
-  if (["user", "identifiant", "account", "phone", "mobile", "mail"].some((keyword) => name.includes(keyword))) {
+  if (
+    ["user", "identifiant", "account", "phone", "mobile", "mail"].some(
+      (keyword) => name.includes(keyword),
+    )
+  ) {
     score += 3;
   }
 
@@ -73,7 +105,7 @@ function findLoginInput(passwordInput) {
     'input[type="email"]',
     'input[type="text"]',
     'input[type="tel"]',
-    'input:not([type])',
+    "input:not([type])",
   ].join(",");
 
   const candidates = Array.from(document.querySelectorAll(selector))
@@ -100,13 +132,19 @@ function findRelatedPasswordInputs(passwordInput) {
   }
 
   return findPasswordInputs().filter((input) => {
-    const distance = Math.abs(input.getBoundingClientRect().top - passwordInput.getBoundingClientRect().top);
+    const distance = Math.abs(
+      input.getBoundingClientRect().top -
+        passwordInput.getBoundingClientRect().top,
+    );
     return distance < 260;
   });
 }
 
 function setInputValue(input, value) {
-  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  const nativeSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    "value",
+  )?.set;
 
   if (nativeSetter) {
     nativeSetter.call(input, value);
@@ -120,7 +158,8 @@ function setInputValue(input, value) {
 
 function fillPasswordInputs(passwordInput, password) {
   const relatedPasswordInputs = findRelatedPasswordInputs(passwordInput);
-  const targets = relatedPasswordInputs.length > 0 ? relatedPasswordInputs : [passwordInput];
+  const targets =
+    relatedPasswordInputs.length > 0 ? relatedPasswordInputs : [passwordInput];
 
   targets.forEach((input) => setInputValue(input, password));
   passwordInput.focus();
@@ -199,14 +238,16 @@ function socialCategoryForDomain(domain) {
     "snapchat.com",
   ];
 
-  return socialDomains.some((item) => host === item || host.endsWith(`.${item}`))
+  return socialDomains.some(
+    (item) => host === item || host.endsWith(`.${item}`),
+  )
     ? "Réseaux sociaux"
     : "Autre";
 }
 
 async function sendRuntimeMessage(message, maxRetries = 3) {
   let lastError = null;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const response = await new Promise((resolve, reject) => {
@@ -223,12 +264,17 @@ async function sendRuntimeMessage(message, maxRetries = 3) {
     } catch (error) {
       lastError = error;
       if (attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500 * (attempt + 1)),
+        );
       }
     }
   }
-  
-  throw lastError || new Error('Échec de la communication après ' + maxRetries + ' tentatives');
+
+  throw (
+    lastError ||
+    new Error("Échec de la communication après " + maxRetries + " tentatives")
+  );
 }
 
 function removeSuggestion() {
@@ -339,13 +385,17 @@ function createSavedAccountButton(entry) {
     textAlign: "left",
   });
 
-  const identifier = createPanelElement("span", String(entry.identifiant || ""), {
-    fontSize: "13px",
-    fontWeight: "900",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  });
+  const identifier = createPanelElement(
+    "span",
+    String(entry.identifiant || ""),
+    {
+      fontSize: "13px",
+      fontWeight: "900",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+  );
   const site = createPanelElement("span", String(entry.site || ""), {
     color: "#9a5a20",
     fontSize: "11px",
@@ -356,7 +406,12 @@ function createSavedAccountButton(entry) {
   return button;
 }
 
-async function loadSavedAccounts(savedList, passwordInput, loginInput, message) {
+async function loadSavedAccounts(
+  savedList,
+  passwordInput,
+  loginInput,
+  message,
+) {
   const response = await sendRuntimeMessage({
     source: PASSWORD_MANAGER_MESSAGE,
     type: "GET_DOMAIN_ENTRIES",
@@ -368,27 +423,34 @@ async function loadSavedAccounts(savedList, passwordInput, loginInput, message) 
   savedList.textContent = "";
 
   if (!response || response.ok !== true) {
-    throw new Error(response?.message || "Impossible de chercher les comptes enregistres.");
+    throw new Error(
+      response?.message || "Impossible de chercher les comptes enregistres.",
+    );
   }
 
   const entries = Array.isArray(response.entries) ? response.entries : [];
   const csrfToken = String(response.csrfToken || "");
 
   if (entries.length === 0) {
-    savedList.appendChild(createPanelElement("div", "Aucun compte enregistre pour ce site.", {
-      color: "#6f5744",
-      fontSize: "12px",
-      padding: "8px 10px",
-      border: "1px dashed #fed7aa",
-      borderRadius: "10px",
-      background: "#fffaf5",
-    }));
+    savedList.appendChild(
+      createPanelElement("div", "Aucun compte enregistre pour ce site.", {
+        color: "#6f5744",
+        fontSize: "12px",
+        padding: "8px 10px",
+        border: "1px dashed #fed7aa",
+        borderRadius: "10px",
+        background: "#fffaf5",
+      }),
+    );
     return;
   }
 
   entries.forEach((entry) => {
     const button = createSavedAccountButton(entry);
-    button.addEventListener("click", async (event) => {
+    const handler = async (event) => {
+      if (!estEvenementDeConfiance(event)) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
 
@@ -418,14 +480,23 @@ async function loadSavedAccounts(savedList, passwordInput, loginInput, message) 
         password = "";
         entry.identifiant = "";
         entry.site = "";
-        setPanelStatus(message, "Identifiants remplis depuis le gestionnaire.", "#166534");
+        setPanelStatus(
+          message,
+          "Identifiants remplis depuis le gestionnaire.",
+          "#166534",
+        );
       } catch (error) {
         password = "";
         button.disabled = false;
-        setPanelStatus(message, error.message || "Impossible de remplir ce compte.", "#991b1b");
+        setPanelStatus(
+          message,
+          error.message || "Impossible de remplir ce compte.",
+          "#991b1b",
+        );
       }
-    });
+    };
 
+    button.addEventListener("click", handler);
     savedList.appendChild(button);
   });
 }
@@ -452,7 +523,7 @@ function positionTriggerButton(input, button) {
   const buttonWidth = 58;
   const buttonHeight = 30;
   const left = window.scrollX + rect.right - buttonWidth - 12;
-  const top = window.scrollY + rect.top + ((rect.height - buttonHeight) / 2);
+  const top = window.scrollY + rect.top + (rect.height - buttonHeight) / 2;
 
   Object.assign(button.style, {
     display: "inline-grid",
@@ -490,11 +561,17 @@ function createTriggerButton(input) {
   });
 
   button.addEventListener("mousedown", (event) => {
+    if (!estEvenementDeConfiance(event)) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
   });
 
   button.addEventListener("click", (event) => {
+    if (!estEvenementDeConfiance(event)) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     showPasswordSuggestion(input);
@@ -555,44 +632,64 @@ function showPasswordSuggestion(passwordInput) {
     fontWeight: "900",
   });
   header.append(title, version);
-  const hint = createPanelElement("div", "Choisis un compte enregistre pour te connecter, ou genere un nouveau mot de passe.", {
-    color: "#6f5744",
-    fontSize: "12px",
-    marginBottom: "10px",
-  });
+  const hint = createPanelElement(
+    "div",
+    "Choisis un compte enregistre pour te connecter, ou genere un nouveau mot de passe.",
+    {
+      color: "#6f5744",
+      fontSize: "12px",
+      marginBottom: "10px",
+    },
+  );
 
   const savedSection = createPanelElement("div", "", {
     display: "grid",
     gap: "7px",
     marginBottom: "10px",
   });
-  const savedTitle = createPanelElement("div", "Comptes enregistres pour ce site", {
-    color: "#6f5744",
-    fontSize: "12px",
-    fontWeight: "900",
-  });
-  const savedList = createPanelElement("div", "Recherche des comptes enregistres...", {
-    display: "grid",
-    gap: "7px",
-    color: "#6f5744",
-    fontSize: "12px",
-  });
+  const savedTitle = createPanelElement(
+    "div",
+    "Comptes enregistres pour ce site",
+    {
+      color: "#6f5744",
+      fontSize: "12px",
+      fontWeight: "900",
+    },
+  );
+  const savedList = createPanelElement(
+    "div",
+    "Recherche des comptes enregistres...",
+    {
+      display: "grid",
+      gap: "7px",
+      color: "#6f5744",
+      fontSize: "12px",
+    },
+  );
   savedSection.append(savedTitle, savedList);
 
   const identifierField = createField("Identifiant", loginInput?.value || "");
-  const passwordField = createField("Mot de passe", passwordInput.value || generatePassword(), "text");
+  const passwordField = createField(
+    "Mot de passe",
+    passwordInput.value || generatePassword(),
+    "text",
+  );
   passwordField.input.style.fontFamily = "Consolas, monospace";
 
-  const message = createPanelElement("div", `Etat : pret. ${EXTENSION_UI_VERSION}`, {
-    minHeight: "20px",
-    color: "#6f5744",
-    fontSize: "12px",
-    marginTop: "10px",
-    padding: "8px 10px",
-    border: "1px solid #fed7aa",
-    borderRadius: "10px",
-    background: "#ffffff",
-  });
+  const message = createPanelElement(
+    "div",
+    `Etat : pret. ${EXTENSION_UI_VERSION}`,
+    {
+      minHeight: "20px",
+      color: "#6f5744",
+      fontSize: "12px",
+      marginTop: "10px",
+      padding: "8px 10px",
+      border: "1px solid #fed7aa",
+      borderRadius: "10px",
+      background: "#ffffff",
+    },
+  );
 
   const actions = createPanelElement("div", "", {
     display: "grid",
@@ -606,7 +703,10 @@ function showPasswordSuggestion(passwordInput) {
   const closeButton = createButton("Fermer");
   let saveInProgress = false;
 
-  newButton.addEventListener("click", () => {
+  newButton.addEventListener("click", (event) => {
+    if (!estEvenementDeConfiance(event)) {
+      return;
+    }
     const generatedPassword = generatePassword();
     passwordField.input.value = generatedPassword;
     fillPasswordInputs(passwordInput, generatedPassword);
@@ -623,9 +723,17 @@ function showPasswordSuggestion(passwordInput) {
   };
   passwordInput.addEventListener("input", syncPasswordFromPage);
 
-  closeButton.addEventListener("click", () => removeSuggestion());
+  closeButton.addEventListener("click", (event) => {
+    if (!estEvenementDeConfiance(event)) {
+      return;
+    }
+    removeSuggestion();
+  });
 
   const saveSuggestedPassword = async (event) => {
+    if (!estEvenementDeConfiance(event)) {
+      return;
+    }
     event?.preventDefault();
     event?.stopPropagation();
 
@@ -636,17 +744,26 @@ function showPasswordSuggestion(passwordInput) {
     saveInProgress = true;
     setPanelStatus(message, "État : clic détecté, vérification des champs...");
 
-    const identifier = identifierField.input.value.trim() || loginInput?.value.trim() || "";
+    const identifier =
+      identifierField.input.value.trim() || loginInput?.value.trim() || "";
     let password = passwordField.input.value;
 
     if (identifier === "") {
-      setPanelStatus(message, "Ajoute d'abord l'identifiant ou l'e-mail.", "#991b1b");
+      setPanelStatus(
+        message,
+        "Ajoute d'abord l'identifiant ou l'e-mail.",
+        "#991b1b",
+      );
       saveInProgress = false;
       return;
     }
 
     if (password.length < 8) {
-      setPanelStatus(message, "Le mot de passe doit contenir au moins 8 caractères.", "#991b1b");
+      setPanelStatus(
+        message,
+        "Le mot de passe doit contenir au moins 8 caractères.",
+        "#991b1b",
+      );
       saveInProgress = false;
       return;
     }
@@ -680,14 +797,22 @@ function showPasswordSuggestion(passwordInput) {
         throw new Error(response?.message || "Enregistrement impossible.");
       }
 
-      setPanelStatus(message, "Enregistré dans le gestionnaire. Recharge le dashboard avec F5.", "#166534");
+      setPanelStatus(
+        message,
+        "Enregistré dans le gestionnaire. Recharge le dashboard avec F5.",
+        "#166534",
+      );
     } catch (error) {
       password = "";
       identifierField.input.value = "";
       passwordField.input.value = "";
       useButton.disabled = false;
       saveInProgress = false;
-      setPanelStatus(message, error.message || "Connecte-toi au gestionnaire puis réessaie.", "#991b1b");
+      setPanelStatus(
+        message,
+        error.message || "Connecte-toi au gestionnaire puis réessaie.",
+        "#991b1b",
+      );
     }
   };
 
@@ -695,21 +820,37 @@ function showPasswordSuggestion(passwordInput) {
   useButton.addEventListener("click", saveSuggestedPassword);
 
   actions.append(useButton, newButton, closeButton);
-  panel.append(header, hint, savedSection, identifierField.wrapper, passwordField.wrapper, message, actions);
+  panel.append(
+    header,
+    hint,
+    savedSection,
+    identifierField.wrapper,
+    passwordField.wrapper,
+    message,
+    actions,
+  );
   document.body.appendChild(panel);
   positionPanel(panel, passwordInput);
 
-  loadSavedAccounts(savedList, passwordInput, loginInput, message).catch((error) => {
-    savedList.textContent = "";
-    savedList.appendChild(createPanelElement("div", error.message || "Impossible de chercher les comptes enregistres.", {
-      color: "#991b1b",
-      fontSize: "12px",
-      padding: "8px 10px",
-      border: "1px solid #fecaca",
-      borderRadius: "10px",
-      background: "#fff1f2",
-    }));
-  });
+  loadSavedAccounts(savedList, passwordInput, loginInput, message).catch(
+    (error) => {
+      savedList.textContent = "";
+      savedList.appendChild(
+        createPanelElement(
+          "div",
+          error.message || "Impossible de chercher les comptes enregistres.",
+          {
+            color: "#991b1b",
+            fontSize: "12px",
+            padding: "8px 10px",
+            border: "1px solid #fecaca",
+            borderRadius: "10px",
+            background: "#fff1f2",
+          },
+        ),
+      );
+    },
+  );
 
   const reposition = () => {
     if (document.body.contains(panel)) {
@@ -762,7 +903,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "FILL_CREDENTIALS") {
-    const result = fillCredentials(String(message.identifier || ""), String(message.password || ""));
+    const result = fillCredentials(
+      String(message.identifier || ""),
+      String(message.password || ""),
+    );
     sendResponse(result);
     return false;
   }

@@ -1,0 +1,19 @@
+{
+  "name": "trae/password-manager",
+  "description": "Gestionnaire de mots de passe PHP sécurisé AES-256-GCM + TOTP",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": ">=8.2",
+    "ext-openssl": "*",
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*",
+    "ext-mbstring": "*"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.5"
+  },
+  "scripts": {
+    "test": "phpunit --colors=always tests/"
+  }
+}

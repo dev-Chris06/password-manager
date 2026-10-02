@@ -103,5 +103,6 @@ reponse_json_remplissage([
     'ok' => true,
     'domain' => $domaine,
     'csrf_token' => csrf_token(),
+    'ajax_token' => (string) ($_SESSION['ajax_token'] ?? ''),
     'entries' => $entries,
 ]);

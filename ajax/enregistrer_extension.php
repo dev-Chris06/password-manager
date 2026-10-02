@@ -89,6 +89,8 @@ if (!($resultat['ok'] ?? false)) {
 reponse_json_extension([
     'ok' => true,
     'message' => 'Entrée enregistrée.',
+    'csrf_token' => csrf_token(),
+    'ajax_token' => (string) ($_SESSION['ajax_token'] ?? ''),
     'entry' => [
         'site' => $site,
         'identifiant' => $identifiant,

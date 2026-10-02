@@ -15,9 +15,18 @@
     const all = groups.join('');
 
     const randomIndex = (length) => {
+        if (!Number.isFinite(length) || length <= 0) {
+            throw new Error("Longueur invalide.");
+        }
         const buffer = new Uint32Array(1);
-        window.crypto.getRandomValues(buffer);
-        return buffer[0] % length;
+        const range = Math.floor(length);
+        const limit = 0xFFFFFFFF - (0xFFFFFFFF % range);
+        while (true) {
+            window.crypto.getRandomValues(buffer);
+            if (buffer[0] < limit) {
+                return buffer[0] % range;
+            }
+        }
     };
 
     const shuffle = (chars) => {
