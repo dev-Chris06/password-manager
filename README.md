@@ -8,7 +8,7 @@ Application PHP procédurale permettant de gérer un coffre de mots de passe **c
 flowchart LR
   U[Utilisateur] -->|Mot de passe maître| B[Navigateur]
   B -->|HTTPS / Session HttpOnly| P[PHP - index.php + pages + ajax]
-  P -->|PDO prepare() + user_id ownership| D[(MySQL / MariaDB)]
+  P -->|"PDO prepare() + user_id ownership"| D[(MySQL / MariaDB)]
   P -->|AES-256-GCM / PBKDF2 bcrypt| C[Crypto serveur]
   E[Extension Chrome MV3] -->|Fetch + AJAX token dédié| P
 
