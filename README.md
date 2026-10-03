@@ -18,7 +18,7 @@ flowchart LR
 
 ## Prérequis
 
-- PHP 8.2+ (ou 8.1 minimum) avec extensions : `openssl`, `pdo_mysql`, `mbstring`, `session`, `json`.
+- PHP 8.2+ (ou 8.1 minimum) avec extensions : `openssl`, `pdo_mysql`, `mbstring`, `gd`, `session`, `json`.
 - MySQL 8+ ou MariaDB 10.6+.
 - Navigateur moderne (Clipboard API + `crypto.getRandomValues`).
 - Pour extension : Chromium / Chrome / Edge MV3 (version 2023+).

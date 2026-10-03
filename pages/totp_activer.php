@@ -75,11 +75,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $issuer = 'Gestionnaire MDP';
     $account = email_utilisateur_connecte();
     $qrCodeUrl = generer_url_totp($secret, $issuer, $account);
-    try {
-        $qrCodeImage = QRCodeGenerator::generateSvgDataUri($qrCodeUrl);
-    } catch (Throwable) {
-        $qrCodeImage = '';
-    }
+    $qrCodeImage = 'totp_qr.php';
+}
+
+if (!$activationSucces && !empty($_SESSION['totp_temp_secret'])) {
+    $qrCodeImage = 'totp_qr.php';
 }
 
 afficher_debut_page('Activer TOTP');
@@ -173,7 +173,7 @@ afficher_debut_page('Activer TOTP');
     <?php if ($qrCodeUrl !== ''): ?>
         <div style="text-align: center; margin: 20px 0;">
             <?php if ($qrCodeImage !== ''): ?>
-                <img src="<?= e($qrCodeImage) ?>" alt="QR Code TOTP" style="border: 1px solid var(--line); border-radius: 8px; padding: 10px;">
+                <img src="<?= e($qrCodeImage) ?>" width="245" height="245" alt="QR Code TOTP" style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;image-rendering:pixelated;">
             <?php else: ?>
                 <div class="alert alert-warning">QR code indisponible localement. Utilisez le secret ci-dessous.</div>
             <?php endif; ?>

@@ -54,7 +54,8 @@ function generer_url_totp(string $secret, string $issuer, string $account): stri
 {
     $encodedSecret = rawurlencode($secret);
     $encodedIssuer = rawurlencode($issuer);
-    $encodedAccount = rawurlencode($account);
+    // Le libellé doit reprendre l'émetteur pour respecter le format otpauth.
+    $encodedLabel = rawurlencode($issuer . ':' . $account);
 
     $secretBytes = _decoder_base32_totp($secret);
     $algo = _choisir_algo_hmac_totp(strlen($secretBytes));
@@ -63,7 +64,7 @@ function generer_url_totp(string $secret, string $issuer, string $account): stri
         $algoParam = '&algorithm=' . strtoupper($algo);
     }
 
-    return "otpauth://totp/{$encodedAccount}?secret={$encodedSecret}&issuer={$encodedIssuer}{$algoParam}";
+    return "otpauth://totp/{$encodedLabel}?secret={$encodedSecret}&issuer={$encodedIssuer}{$algoParam}";
 }
 
 function generer_code_totp(string $secret, int $time = null): string

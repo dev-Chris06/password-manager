@@ -14,6 +14,7 @@ Deux options sont proposées :
   - `openssl` (chiffrement AES-GCM, PBKDF2, bcrypt natif fonctionne sans)
   - `pdo_mysql` (accès MySQL / MariaDB via PDO)
   - `mbstring` (coupes `mb_substr` sur données utilisateurs Unicode)
+  - `gd` (génération locale du QR code TOTP)
   - `session` (toujours présente, mais vérifier)
   - `json` (toujours présente, vérifier)
 - MySQL ou **MariaDB** 10.6+ (compatibles `FROM_BASE64()` et `TIMESTAMPDIFF`)
@@ -22,7 +23,7 @@ Deux options sont proposées :
 Vérifier ses extensions en ligne de commande :
 
 ```bash
-php -m | grep -E "openssl|pdo_mysql|mbstring|session|json"
+php -m | grep -E "openssl|pdo_mysql|mbstring|gd|session|json"
 ```
 
 Tu dois voir les 5 lignes. Si une manque, active-la dans ton `php.ini`.
