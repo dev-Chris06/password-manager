@@ -257,17 +257,38 @@ function totp_actif_pour_utilisateur(int $userId): bool
     return is_array($result) && (int) $result['totp_active'] === 1;
 }
 
+function cle_chiffrement_totp_session(): string
+{
+    $encoded = $_SESSION['cle_chiffrement'] ?? null;
+    if (!is_string($encoded)) {
+        throw new RuntimeException('Clé de session TOTP indisponible.');
+    }
+    return decoder_cle_session($encoded);
+}
+
 function obtenir_secret_totp(int $userId): ?string
 {
-    $stmt = get_pdo()->prepare('SELECT totp_secret FROM utilisateurs WHERE id = :id');
+    $stmt = get_pdo()->prepare(
+        'SELECT totp_secret, totp_secret_iv, totp_secret_tag FROM utilisateurs WHERE id = :id'
+    );
     $stmt->execute(['id' => $userId]);
     $result = $stmt->fetch();
-    
-    if (!is_array($result) || $result['totp_secret'] === null || $result['totp_secret'] === '') {
+
+    if (
+        !is_array($result)
+        || empty($result['totp_secret'])
+        || empty($result['totp_secret_iv'])
+        || empty($result['totp_secret_tag'])
+    ) {
         return null;
     }
-    
-    return (string) $result['totp_secret'];
+
+    return dechiffrer_mdp_gcm(
+        (string) $result['totp_secret'],
+        (string) $result['totp_secret_iv'],
+        (string) $result['totp_secret_tag'],
+        cle_chiffrement_totp_session()
+    );
 }
 
 function obtenir_hash_mdp_utilisateur(int $userId): ?string
@@ -285,15 +306,18 @@ function activer_totp_pour_utilisateur(int $userId, string $secret, ?int $slotIn
 {
     $pdo = get_pdo();
     try {
+        $encrypted = chiffrer_mdp_gcm($secret, cle_chiffrement_totp_session());
         $pdo->beginTransaction();
         $stmt = $pdo->prepare(
             'UPDATE utilisateurs 
-             SET totp_secret = :secret, totp_active = 1'
+             SET totp_secret = :secret, totp_secret_iv = :iv, totp_secret_tag = :tag, totp_active = 1'
              . ($slotInitial !== null ? ', last_totp_slot = :slot ' : ' ')
              . 'WHERE id = :id'
         );
         $params = [
-            'secret' => $secret,
+            'secret' => $encrypted['mdp_chiffre'],
+            'iv' => $encrypted['iv'],
+            'tag' => $encrypted['auth_tag'],
             'id' => $userId,
         ];
         if ($slotInitial !== null) {
@@ -328,7 +352,7 @@ function desactiver_totp_pour_utilisateur(int $userId): bool
         $pdo->beginTransaction();
         $stmt = get_pdo()->prepare(
             'UPDATE utilisateurs 
-             SET totp_secret = NULL, totp_active = 0, last_totp_slot = 0
+             SET totp_secret = NULL, totp_secret_iv = NULL, totp_secret_tag = NULL, totp_active = 0, last_totp_slot = 0
              WHERE id = :id'
         );
         $ok = $stmt->execute(['id' => $userId]);

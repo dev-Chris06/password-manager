@@ -9,7 +9,6 @@ chrome.runtime.onInstalled.addListener(() => {
 
 const MESSAGE_SOURCE = "GESTIONNAIRE_MDP_EXTENSION";
 const DEFAULT_BASE_URL = "http://localhost/password-manager";
-const SESSION_COOKIE_NAME = "gestionnaire_mdp_session";
 
 function normalizeBaseUrl(value) {
   const candidate = String(value || DEFAULT_BASE_URL)
@@ -38,32 +37,6 @@ function getBaseUrl() {
     chrome.storage.local.get({ baseUrl: DEFAULT_BASE_URL }, (items) => {
       resolve(normalizeBaseUrl(items.baseUrl));
     });
-  });
-}
-
-function getSessionCookie(url) {
-  return new Promise((resolve) => {
-    const parsedUrl = new URL(url);
-
-    if (!["localhost", "127.0.0.1"].includes(parsedUrl.hostname)) {
-      resolve("");
-      return;
-    }
-
-    chrome.cookies.get(
-      {
-        url: `${parsedUrl.protocol}//${parsedUrl.host}/`,
-        name: SESSION_COOKIE_NAME,
-      },
-      (cookie) => {
-        if (chrome.runtime.lastError) {
-          resolve("");
-          return;
-        }
-
-        resolve(cookie?.value || "");
-      },
-    );
   });
 }
 

@@ -15,8 +15,14 @@ if (!function_exists('get_pdo')) {
         $host = env_value('DB_HOST', '127.0.0.1');
         $dbName = env_value('DB_NAME', 'password_manager');
         $user = env_value('DB_USER', 'root');
-        $pass = env_value('DB_PASS', '');
-        $dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $host, $dbName);
+        $pass = env_value('DB_PASS', env_value('DB_PASSWORD', ''));
+        $port = env_value('DB_PORT');
+        $dsn = sprintf(
+            'mysql:host=%s%s;dbname=%s;charset=utf8mb4',
+            $host,
+            $port !== null ? ';port=' . (int) $port : '',
+            $dbName
+        );
 
         $pdo = new PDO($dsn, (string) $user, (string) $pass, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,

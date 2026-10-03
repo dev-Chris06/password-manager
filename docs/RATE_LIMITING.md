@@ -49,7 +49,7 @@ Chaque fois qu'un verrou est **posé**, le code regarde l'`infraction_n` maximal
 ```
 connecter_utilisateur(email, mdp)
 │
-├─ migrer_login_blocages_si_besoin()            ← auto-migration V2→V3 safe si besoin
+├─ migrations/003_login_blocages_v3.sql          ← migration explicite au déploiement
 │
 ├─ fusionner_statuts_verrous(ip, email)         ← 1 appel = 3 axes lus
 │  ├─ statut_verrou_pair(email, ip)             → axe PAIR
@@ -84,7 +84,7 @@ Points clés d'architecture :
 ## Migration V2 → V3 (idempotente)
 
 ### Auto-migration à la volée (sans intervention)
-La fonction [migrer_login_blocages_si_besoin](file:///home/dev-chris06/dev/password-manager/includes/auth.php#L443-L505) est appelée à chaque début de `connecter_utilisateur()` :
+Les migrations de schéma sont exécutées explicitement au déploiement, jamais depuis `connecter_utilisateur()` :
 - Si `login_blocages` contient déjà la colonne `axe` (V3) → **no-op** (coût : 1 `SHOW COLUMNS` mis en cache par le `static $fait`).
 - Si la table est en V2 → on SELECT toutes les lignes existantes → DROP + CREATE V3 → réinsertion en `axe='PAIR_IP_EMAIL'`, `infraction_n=1`.
 

@@ -1,2 +1,4 @@
-# Placeholder. Plus tard : règles de réécriture + sécurité.
-# À terme : le document racine d'Apache pointe vers /public/
+Options -Indexes
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ router.php [L,QSA]

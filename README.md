@@ -30,7 +30,7 @@ Voir [INSTALL.md](INSTALL.md) (2 options : serveur dev intégré ou hébergement
 Pour un test ultra rapide :
 
 ```bash
-cp .env.example .env              # édite DB_USER/DB_PASSWORD/DB_NAME après
+cp .env.example .env              # édite DB_USER/DB_PASS/DB_NAME après
 mysql -u root -p < database.sql   # crée la base (adapter user si besoin)
 php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
 ```
@@ -51,7 +51,7 @@ php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
 | Brique | Implémentation | Fichier |
 |---|---|---|
 | Hash du MDP maître | `password_hash` + **bcrypt cost 12** | [config/config.php](config/config.php) · [includes/crypto.php](includes/crypto.php#L144-L147) |
-| Dérivation clé AES | PBKDF2 **SHA-256, 100 000 itérations** (prévu : 600 000) | [includes/crypto.php#L23-L40](includes/crypto.php#L23-L40) |
+| Dérivation clé AES | PBKDF2 **SHA-256, 600 000 itérations** | [includes/crypto.php#L23-L40](includes/crypto.php#L23-L40) |
 | Chiffrement symétrique | **AES-256-GCM** IV 12 octets aléatoires / entrée | [includes/crypto.php#L47-L128](includes/crypto.php#L47-L128) |
 | Source d'aléa CSPRNG serveur | `random_bytes()` (PHP) · `crypto.getRandomValues()` (JS) | Globale |
 
@@ -70,19 +70,10 @@ php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
 - Headers de sécurité révisés CSP nonces + `frame-ancestors 'none'` + `base-uri 'self'` + `form-action 'self'` + retrait `X-XSS-Protection`.
 - Journal d'audit structuré : 502j, rétention configurable (IP, UA, détail sans donnée sensible).
 
-## Récupération de compte (oubli du MDP maître)
+## Récupération de compte
 
-> **Choix délibéré : pas de lien "Mot de passe oublié" par email.**
-> Un reset par email casserait la promesse de confidentialité "zero-connaissance".
+Il n’existe volontairement **aucune récupération du mot de passe maître** : la perte du mot de passe implique la perte du coffre chiffré. Les codes de récupération fournis par l’application servent uniquement à la seconde étape TOTP.
 
-### Stratégie retenue (clés de récupération)
-
-- À l'inscription ET à chaque changement de MDP maître : une **clé de récupération unique** `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX` est affichée **une seule fois**.
-- L'utilisateur **doit l'imprimer** ou la stocker dans un emplacement SÉPARÉ de son MDP maître.
-- Pour récupérer : page de reset → saisie de la clé de récupération → nouveau MDP maître → invalidation automatique de l'ancienne clé.
-- ❌ Perte simultanée du MDP maître ET de la clé de récupération → **perte définitive du coffre** (aucune backdoor).
-
-Détails dans : [docs/MENACE.md § 5](docs/MENACE.md#5-stratégie-de-récupération-de-compte-prévue--documentation)
 
 ## Structure
 
@@ -144,8 +135,8 @@ README.md
 | V9.1.1 TLS en production requis | ✅ README le recommande, cookie Secure auto-HTTPS |
 | V10.1.1 Crypto AES-GCM 256 bits | ✅ `aes-256-gcm` |
 | V10.1.2 IV/nonces cryptographiquement aléatoires | ✅ `random_bytes(12)` + par entrée |
-| V10.2.1 KDF itératif PBKDF2 avec >= 100k itérations | ✅ 100k, prévu 600k OWASP 2025 |
-| V13.1.1 Secret TOTP stocké de façon sécurisée | 🟡 En clair prévu : chiffrement avec cle_maitre |
+| V10.2.1 KDF itératif PBKDF2 avec >= 100k itérations | ✅ 600k |
+| V13.1.1 Secret TOTP stocké de façon sécurisée | ✅ Chiffré AES-256-GCM avec la clé dérivée du mot de passe maître |
 | V14.4.1 Build/Dockerfile sans secrets hardcodés | ✅ `.env` exclus de Git |
 
 Légende : ✅ conforme · 🟡 partielle / en cours · ⚪ non applicable / hors périmètre N1

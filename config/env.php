@@ -41,13 +41,17 @@ function load_env(string $path): void
         putenv($key . '=' . $value);
     }
 
-    $cles_obligatoires = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'];
+    $cles_obligatoires = ['DB_HOST', 'DB_NAME', 'DB_USER'];
     $manquantes = [];
     foreach ($cles_obligatoires as $c) {
         if (!isset($_ENV[$c]) || $_ENV[$c] === '') {
             $manquantes[] = $c;
         }
     }
+    if ((($_ENV['DB_PASS'] ?? '') === '') && (($_ENV['DB_PASSWORD'] ?? '') === '')) {
+        $manquantes[] = 'DB_PASS';
+    }
+
     if (!empty($manquantes)) {
         http_response_code(500);
         die('ERREUR CONFIG : variables .env manquantes : ' . implode(', ', $manquantes));
