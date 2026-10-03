@@ -186,19 +186,29 @@ function fillCredentials(identifier, password) {
   };
 }
 
-function pickRandom(chars) {
+function randomIndex(length) {
+  if (!Number.isSafeInteger(length) || length <= 0) {
+    throw new Error("Longueur aléatoire invalide.");
+  }
+
+  const max = 0x100000000;
+  const limit = max - (max % length);
   const values = new Uint32Array(1);
-  crypto.getRandomValues(values);
-  return chars[values[0] % chars.length];
+  do {
+    crypto.getRandomValues(values);
+  } while (values[0] >= limit);
+
+  return values[0] % length;
+}
+
+function pickRandom(chars) {
+  return chars[randomIndex(chars.length)];
 }
 
 function shuffleString(value) {
   const chars = value.split("");
-  const randomValues = new Uint32Array(chars.length);
-  crypto.getRandomValues(randomValues);
-
   for (let i = chars.length - 1; i > 0; i -= 1) {
-    const j = randomValues[i] % (i + 1);
+    const j = randomIndex(i + 1);
     [chars[i], chars[j]] = [chars[j], chars[i]];
   }
 
