@@ -884,8 +884,21 @@ observer.observe(document.documentElement, { childList: true, subtree: true });
 window.addEventListener("scroll", refreshTriggerButtons, { passive: true });
 window.addEventListener("resize", refreshTriggerButtons, { passive: true });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.source !== PASSWORD_MANAGER_MESSAGE) {
+    return false;
+  }
+
+  if (!sender || sender.id !== chrome.runtime.id) {
+    return false;
+  }
+
+  if (message.type === "TOGGLE_PANEL") {
+    const passwordInput = findPasswordInput();
+    if (passwordInput) {
+      showPasswordSuggestion(passwordInput);
+    }
+    sendResponse({ ok: true });
     return false;
   }
 

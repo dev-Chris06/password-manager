@@ -17,10 +17,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = normaliser_email((string) ($_POST['email'] ?? ''));
         $motDePasse = (string) ($_POST['mot_de_passe'] ?? '');
         $confirmation = (string) ($_POST['confirmation'] ?? '');
+        $ip = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
 
-        if ($motDePasse !== $confirmation || !inscrire_utilisateur($email, $motDePasse)) {
+        $statut = statut_verrou_inscription_ip($ip);
+        if ($statut['bloque']) {
+            $secondes = max(0, (int) $statut['secondes_restantes']);
+            $erreur = 'Inscription temporairement indisponible depuis votre réseau. Réessayez dans ' . $secondes . ' seconde(s).';
+        } elseif ($motDePasse !== $confirmation || !inscrire_utilisateur($email, $motDePasse)) {
+            enregistrer_tentative_inscription($ip);
+            $cpt = compter_tentatives_inscription_dans_fenetre($ip);
+            $seuil = defined('INSCRIPTION_SEUIL_IP_MAX_1H') ? (int) INSCRIPTION_SEUIL_IP_MAX_1H : 5;
+            if ($cpt >= $seuil) {
+                poser_verrou_inscription_ip($ip);
+            }
             $erreur = 'Inscription impossible. Vérifiez les informations saisies.';
         } else {
+            supprimer_verrou_inscription_ip($ip);
             definir_flash('success', 'Compte créé. Vous pouvez vous connecter.');
             redirect_to('pages/login.php');
         }

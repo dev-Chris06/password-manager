@@ -34,9 +34,33 @@ function load_env(string $path): void
             $value = substr($value, 1, -1);
         }
 
+        $value = trim($value, " \t\n\r\0\x0B");
+
         $_ENV[$key] = $value;
         $_SERVER[$key] = $value;
         putenv($key . '=' . $value);
+    }
+
+    $cles_obligatoires = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'];
+    $manquantes = [];
+    foreach ($cles_obligatoires as $c) {
+        if (!isset($_ENV[$c]) || $_ENV[$c] === '') {
+            $manquantes[] = $c;
+        }
+    }
+    if (!empty($manquantes)) {
+        http_response_code(500);
+        die('ERREUR CONFIG : variables .env manquantes : ' . implode(', ', $manquantes));
+    }
+
+    if (isset($_ENV['DB_HOST'])) {
+        $host = $_ENV['DB_HOST'];
+        $ipValide = filter_var($host, FILTER_VALIDATE_IP) !== false;
+        $hostValide = preg_match('/^[a-z0-9.-]+$/i', $host) === 1;
+        if (!$ipValide && !$hostValide) {
+            http_response_code(500);
+            die('ERREUR CONFIG : DB_HOST invalide.');
+        }
     }
 }
 

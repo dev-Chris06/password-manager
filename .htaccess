@@ -1,0 +1,33 @@
+# ============================================================
+# SÉCURITÉ RACINE - Interdire l'accès HTTP aux fichiers sensibles
+# ============================================================
+
+# Bloquer TOUS les fichiers commençant par un point (ex: .env, .git, .htaccess lui-même)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Bloquer l'accès direct aux dossiers sensibles (code PHP hors webroot)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(includes|config|migrations|tests|vendor|extension-chrome|docs|logs)(/|$) - [F,L]
+</IfModule>
+
+# Si mod_rewrite n'est pas chargé : seconde couche via FilesMatch (moins précis mais utile)
+<IfModule !mod_rewrite.c>
+    <FilesMatch "\.(php|sql|json|md|lock|xml|yml|yaml)$">
+        <If "%{REQUEST_URI} !~ m#^/(pages|ajax|public|assets)/#">
+            Require all denied
+        </If>
+    </FilesMatch>
+</IfModule>
+
+# Désactiver le listage des répertoires
+Options -Indexes -MultiViews
+
+# CSP par défaut sur les assets statiques (header reste piloté par PHP pour les pages)
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

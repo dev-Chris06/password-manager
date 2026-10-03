@@ -1,6 +1,43 @@
 <?php
 declare(strict_types=1);
 
+function _decoder_base32_totp(string $secret): string
+{
+    $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    $secret = strtoupper($secret);
+    $secretBytes = '';
+    $buffer = 0;
+    $bitsLeft = 0;
+
+    for ($i = 0; $i < strlen($secret); $i++) {
+        $char = $secret[$i];
+        if ($char === '=') break;
+        $val = strpos($chars, $char);
+        if ($val === false) continue;
+
+        $buffer = ($buffer << 5) | $val;
+        $bitsLeft += 5;
+
+        if ($bitsLeft >= 8) {
+            $secretBytes .= chr(($buffer >> ($bitsLeft - 8)) & 0xFF);
+            $bitsLeft -= 8;
+        }
+    }
+
+    return $secretBytes;
+}
+
+function _choisir_algo_hmac_totp(int $longueurSecretOctets): string
+{
+    if ($longueurSecretOctets >= 32) {
+        return 'sha512';
+    }
+    if ($longueurSecretOctets >= 28) {
+        return 'sha256';
+    }
+    return 'sha1';
+}
+
 function generer_secret_totp(): string
 {
     $bytes = random_bytes(20);
@@ -18,8 +55,15 @@ function generer_url_totp(string $secret, string $issuer, string $account): stri
     $encodedSecret = rawurlencode($secret);
     $encodedIssuer = rawurlencode($issuer);
     $encodedAccount = rawurlencode($account);
-    
-    return "otpauth://totp/{$encodedAccount}?secret={$encodedSecret}&issuer={$encodedIssuer}";
+
+    $secretBytes = _decoder_base32_totp($secret);
+    $algo = _choisir_algo_hmac_totp(strlen($secretBytes));
+    $algoParam = '';
+    if ($algo !== 'sha1') {
+        $algoParam = '&algorithm=' . strtoupper($algo);
+    }
+
+    return "otpauth://totp/{$encodedAccount}?secret={$encodedSecret}&issuer={$encodedIssuer}{$algoParam}";
 }
 
 function generer_code_totp(string $secret, int $time = null): string
@@ -27,48 +71,30 @@ function generer_code_totp(string $secret, int $time = null): string
     if ($time === null) {
         $time = time();
     }
-    
+
     $timeStep = 30;
     $counter = floor($time / $timeStep);
-    
+
     $counterBytes = pack('J', $counter);
     $counterBytes = str_pad(substr($counterBytes, -8), 8, "\x00", STR_PAD_LEFT);
-    
-    $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-    $secret = strtoupper($secret);
-    $secretBytes = '';
-    $buffer = 0;
-    $bitsLeft = 0;
-    
-    for ($i = 0; $i < strlen($secret); $i++) {
-        $char = $secret[$i];
-        if ($char === '=') break;
-        $val = strpos($chars, $char);
-        if ($val === false) continue;
-        
-        $buffer = ($buffer << 5) | $val;
-        $bitsLeft += 5;
-        
-        if ($bitsLeft >= 8) {
-            $secretBytes .= chr(($buffer >> ($bitsLeft - 8)) & 0xFF);
-            $bitsLeft -= 8;
-        }
-    }
-    
+
+    $secretBytes = _decoder_base32_totp($secret);
+
     if ($secretBytes === '') {
         throw new RuntimeException('Secret TOTP invalide.');
     }
-    
-    $hash = hash_hmac('sha1', $counterBytes, $secretBytes, true);
+
+    $algo = _choisir_algo_hmac_totp(strlen($secretBytes));
+    $hash = hash_hmac($algo, $counterBytes, $secretBytes, true);
     $offset = ord($hash[strlen($hash) - 1]) & 0x0F;
-    
+
     $binary = (
         ((ord($hash[$offset]) & 0x7F) << 24) |
         ((ord($hash[$offset + 1]) & 0xFF) << 16) |
         ((ord($hash[$offset + 2]) & 0xFF) << 8) |
         (ord($hash[$offset + 3]) & 0xFF)
     );
-    
+
     $otp = $binary % pow(10, 6);
     return str_pad((string) $otp, 6, '0', STR_PAD_LEFT);
 }

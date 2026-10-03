@@ -38,32 +38,107 @@ if (!defined('SESSION_TIMEOUT_ABSOLU_SEC')) {
 if (!defined('LOGIN_DUMMY_BCRYPT_HASH')) {
     define('LOGIN_DUMMY_BCRYPT_HASH', '$2y$12$DRjm/5F3C1g3QVtR0k1WGOxhpBpR.G0a1.3nVh19XxZz7f7q5b6Oa');
 }
-if (!defined('RL_IP_EMAIL_MAX_5MIN')) {
-    define('RL_IP_EMAIL_MAX_5MIN', 3);
+
+// ========================================================================
+// Login — Seuils de déclenchement des verrous (axes)
+// ========================================================================
+// Axe PAIR_IP_EMAIL : 3 échecs <ip,email> dans les 5 dernières minutes.
+if (!defined('LOGIN_SEUIL_PAIR_MAX_5MIN')) {
+    define('LOGIN_SEUIL_PAIR_MAX_5MIN', 3);
 }
-if (!defined('RL_IP_EMAIL_BLOCK_SEC')) {
-    define('RL_IP_EMAIL_BLOCK_SEC', 60);
+// Axe GLOBAL_IP : 20 échecs sur <ip> toutes paires confondues dans 1h.
+if (!defined('LOGIN_SEUIL_IP_MAX_1H')) {
+    define('LOGIN_SEUIL_IP_MAX_1H', 20);
 }
-if (!defined('RL_IP_MAX_1H')) {
-    define('RL_IP_MAX_1H', 30);
+// Axe GLOBAL_EMAIL : 10 échecs sur <email> toutes IP confondues dans 1h.
+if (!defined('LOGIN_SEUIL_EMAIL_MAX_1H')) {
+    define('LOGIN_SEUIL_EMAIL_MAX_1H', 10);
 }
-if (!defined('RL_IP_BLOCK_SEC')) {
-    define('RL_IP_BLOCK_SEC', 3600);
+// Durée de mémoire d'une infraction pour l'escalade (24h).
+if (!defined('LOGIN_ESCALADE_HISTORIQUE_H')) {
+    define('LOGIN_ESCALADE_HISTORIQUE_H', 24);
 }
-if (!defined('RL_EMAIL_MAX_1H')) {
-    define('RL_EMAIL_MAX_1H', 10);
+
+// ========================================================================
+// Login — Escalade des durées de blocage (par axe, selon infraction_n)
+// ========================================================================
+// Table d'escalade : [niveau => durées en secondes].
+// Un niveau > le index max retombe sur la durée la plus longue.
+// (Lisible via getenv pour permettre un paramétrage conteneurisé.)
+if (!defined('LOGIN_DUREE_PAIR_SEC')) {
+    define('LOGIN_DUREE_PAIR_SEC',     [1 => 60,    2 => 300,   3 => 3600]);   // 1min / 5min / 1h
 }
-if (!defined('RL_EMAIL_BLOCK_SEC')) {
-    define('RL_EMAIL_BLOCK_SEC', 1800);
+if (!defined('LOGIN_DUREE_IP_SEC')) {
+    define('LOGIN_DUREE_IP_SEC',       [1 => 300,   2 => 1800,  3 => 21600]);  // 5min / 30min / 6h
 }
+if (!defined('LOGIN_DUREE_EMAIL_SEC')) {
+    define('LOGIN_DUREE_EMAIL_SEC',    [1 => 600,   2 => 3600,  3 => 28800]);  // 10min / 1h / 8h
+}
+
+// ========================================================================
+// Login — Durée de conservation des logs d'échecs
+// ========================================================================
 if (!defined('RL_RETENTION_DAYS')) {
     define('RL_RETENTION_DAYS', 7);
+}
+
+// ========================================================================
+// Inscription — Seuils & durées (axe GLOBAL_IP_INSCRIPTION)
+// ========================================================================
+// Principe : l'axe GLOBAL_IP_INSCRIPTION est indépendant des axes de
+// connexion. Il ne sanctionne que les créations de compte (succès ET échecs
+// de validation) sur une même IP, afin d'éviter un flood de la table
+// utilisateurs ou la création de faux comptes en masse.
+//
+// Nombre MAX de tentatives d'inscription (valides ou non) par IP dans
+// la fenêtre donnée, avant déclenchement d'un verrou.
+if (!defined('INSCRIPTION_SEUIL_IP_MAX_1H')) {
+    define('INSCRIPTION_SEUIL_IP_MAX_1H', 5);
+}
+// Fenêtre glissante pour comptage des inscriptions (minutes).
+if (!defined('INSCRIPTION_FENETRE_COMPTAGE_MIN')) {
+    define('INSCRIPTION_FENETRE_COMPTAGE_MIN', 60);
+}
+// Table d'escalade : [niveau => durées en secondes].
+if (!defined('INSCRIPTION_DUREE_IP_SEC')) {
+    define('INSCRIPTION_DUREE_IP_SEC',   [1 => 300,   2 => 3600,  3 => 86400]); // 5min / 1h / 24h
+}
+// Durée de mémoire d'une infraction pour l'escalade (heures).
+if (!defined('INSCRIPTION_ESCALADE_HISTORIQUE_H')) {
+    define('INSCRIPTION_ESCALADE_HISTORIQUE_H', 48);
+}
+
+// (Alias vers la nouvelle convention, pour compatibilité ascendante — safe.)
+if (!defined('RL_IP_EMAIL_MAX_5MIN')) {
+    define('RL_IP_EMAIL_MAX_5MIN', LOGIN_SEUIL_PAIR_MAX_5MIN);
+}
+if (!defined('RL_IP_EMAIL_BLOCK_SEC')) {
+    define('RL_IP_EMAIL_BLOCK_SEC', LOGIN_DUREE_PAIR_SEC[1]);
+}
+if (!defined('RL_IP_MAX_1H')) {
+    define('RL_IP_MAX_1H', LOGIN_SEUIL_IP_MAX_1H);
+}
+if (!defined('RL_IP_BLOCK_SEC')) {
+    define('RL_IP_BLOCK_SEC', LOGIN_DUREE_IP_SEC[1]);
+}
+if (!defined('RL_EMAIL_MAX_1H')) {
+    define('RL_EMAIL_MAX_1H', LOGIN_SEUIL_EMAIL_MAX_1H);
+}
+if (!defined('RL_EMAIL_BLOCK_SEC')) {
+    define('RL_EMAIL_BLOCK_SEC', LOGIN_DUREE_EMAIL_SEC[1]);
 }
 if (!defined('LOGIN_LOCK_MAX_FAILURES')) {
     define('LOGIN_LOCK_MAX_FAILURES', RL_IP_EMAIL_MAX_5MIN);
 }
 if (!defined('LOGIN_LOCK_SECONDS')) {
     define('LOGIN_LOCK_SECONDS', RL_IP_EMAIL_BLOCK_SEC);
+}
+// (Aliases plus anciens — cohérence globale.)
+if (!defined('LOGIN_MAX_FAILURES')) {
+    define('LOGIN_MAX_FAILURES', LOGIN_SEUIL_PAIR_MAX_5MIN);
+}
+if (!defined('LOGIN_BLOCK_SECONDS')) {
+    define('LOGIN_BLOCK_SECONDS', LOGIN_DUREE_PAIR_SEC[1]);
 }
 if (!defined('SECURITY_HEADERS')) {
     define('SECURITY_HEADERS', [

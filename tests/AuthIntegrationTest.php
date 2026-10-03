@@ -28,6 +28,7 @@ final class AuthIntegrationTest extends TestCase
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]
         );
+        $root->exec("SET time_zone = '+00:00'");
         $root->exec('SET FOREIGN_KEY_CHECKS=0');
         $root->exec(sprintf('DROP DATABASE IF EXISTS `%s`', $dbTest));
         $root->exec(sprintf(

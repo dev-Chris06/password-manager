@@ -69,12 +69,27 @@ CREATE TABLE IF NOT EXISTS tentatives_login_detail (
     INDEX idx_ip_time         (ip, tentative_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS login_blocages (
-    ip              VARCHAR(45)  NOT NULL,
-    email           VARCHAR(255) NOT NULL,
-    bloque_jusqu_a  DATETIME     NOT NULL,
-    UNIQUE KEY uq_ip_email (ip, email),
-    INDEX idx_bloque_jusqu_a (bloque_jusqu_a)
+-- =============================================================
+-- LOGIN : verrous explicites multi-axes (Défaut 3 — escalade)
+-- =============================================================
+-- 3 axes supportés par la même table, discriminés via `axe` :
+--   PAIR_IP_EMAIL  : 1 paire <ip,email> (infraction 3/5min)
+--   GLOBAL_IP      : 1 IP, tous emails confondus (≥ 20/1h)
+--   GLOBAL_EMAIL   : 1 email, toutes IP confondues (≥ 10/1h)
+--
+-- `infraction_n` est incrémenté si une même clé (axe + discriminants)
+-- a connu un autre verrou expiré dans les dernières 24 h, pour
+-- l'escalade des durées. La clé UNIQUE est composite (axe, ip, email).
+CREATE TABLE login_blocages (
+    id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    axe            ENUM('PAIR_IP_EMAIL', 'GLOBAL_IP', 'GLOBAL_EMAIL', 'GLOBAL_IP_INSCRIPTION') NOT NULL,
+    ip             VARCHAR(45)  NOT NULL DEFAULT '',
+    email          VARCHAR(255) NOT NULL DEFAULT '',
+    bloque_jusqu_a DATETIME     NOT NULL,
+    infraction_n   TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_login_blocages_axe (axe, ip, email),
+    INDEX idx_login_blocages_expire (bloque_jusqu_a)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS journal_actions (

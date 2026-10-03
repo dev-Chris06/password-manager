@@ -287,6 +287,10 @@ function trouver_utilisateur_par_email(string $email): ?array
 }
 
 /**
+ * @deprecated Défaut 3 — Utiliser fusionner_statuts_verrous() + la table login_blocages (source unique de vérité).
+ *             Cette fonction est conservée pour compatibilité ascendante et les tests historiques.
+ *             Elle lit l'ancienne table tentatives_login (seulement axe <email>).
+ *
  * @return array{bloque:bool, secondes_restantes:int}
  */
 function statut_blocage_login(string $email): array
@@ -427,88 +431,450 @@ function purger_tentatives_login_anciennes(): void
 }
 
 /**
- * Vérifie la présence d'un verrou <IP, Email> explicite dans login_blocages.
- * Retourne le délai restant du verrou (0 s = pas de verrou / expiré).
+ * Migration idempotente login_blocages V2 → V3.
  *
- * @return array{bloque:bool, secondes_restantes:int}
+ * Historique :
+ *  - V2 (avant Défaut 3) : UNIQUE(ip, email), pour la seule paire <IP,Email>.
+ *  - V3 (Défaut 3 — escalade) : ajout colonne `axe` ENUM + `infraction_n`
+ *       + `created_at`, UNIQUE composite (axe, ip, email). Permet les axes
+ *       GLOBAL_IP (email='') et GLOBAL_EMAIL (ip='').
+ *
+ * Si la table n'existe pas → CREATE.
+ * Si la table est V2 (pas de colonne `axe`) → DROP+CREATE puis réinsertion des
+ * lignes existantes avec axe='PAIR_IP_EMAIL'.
+ * Si déjà V3 → no-op (rapide, peut être appelé à chaque hit sans coût).
  */
-function statut_verrou_login(string $email, string $ip): array
+function migrer_login_blocages_si_besoin(): void
+{
+    static $fait = false;
+    if ($fait === true) {
+        return;
+    }
+    try {
+        $pdo = get_pdo();
+        $colonnes = $pdo->query("SHOW COLUMNS FROM login_blocages")->fetchAll(PDO::FETCH_COLUMN, 0);
+        $colonnes = array_map('strtolower', $colonnes);
+    } catch (Throwable $e) {
+        // Table n'existe pas ou autre erreur → on tente la création
+        $pdo = get_pdo();
+        $colonnes = [];
+    }
+
+    if (in_array('axe', $colonnes, true)) {
+        $fait = true;
+        return;
+    }
+
+    try {
+        if ($colonnes !== []) {
+            $existants = $pdo->query(
+                "SELECT ip, email, bloque_jusqu_a FROM login_blocages"
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $existants = [];
+        }
+
+        $pdo->exec("DROP TABLE IF EXISTS login_blocages");
+        $pdo->exec("CREATE TABLE login_blocages (
+            id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            axe            ENUM('PAIR_IP_EMAIL', 'GLOBAL_IP', 'GLOBAL_EMAIL', 'GLOBAL_IP_INSCRIPTION') NOT NULL,
+            ip             VARCHAR(45)  NOT NULL DEFAULT '',
+            email          VARCHAR(255) NOT NULL DEFAULT '',
+            bloque_jusqu_a DATETIME     NOT NULL,
+            infraction_n   TINYINT UNSIGNED NOT NULL DEFAULT 1,
+            created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_login_blocages_axe (axe, ip, email),
+            INDEX idx_login_blocages_expire (bloque_jusqu_a)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        if ($existants !== []) {
+            $ins = $pdo->prepare(
+                "INSERT INTO login_blocages (axe, ip, email, bloque_jusqu_a, infraction_n)
+                 VALUES ('PAIR_IP_EMAIL', :ip, :email, :bj, 1)"
+            );
+            foreach ($existants as $r) {
+                $ins->execute([
+                    'ip'    => (string) $r['ip'],
+                    'email' => (string) $r['email'],
+                    'bj'    => (string) $r['bloque_jusqu_a'],
+                ]);
+            }
+        }
+    } catch (Throwable) {
+        // Ne jamais casser l'authentification si la migration échoue.
+        // Les vieilles fonctions (fallback) prendront le relais.
+    } finally {
+        $fait = true;
+    }
+}
+
+// ========================================================================
+// Escalade : helpers partagés
+// ========================================================================
+
+/**
+ * Durée de blocage pour un axe donné, en fonction du niveau d'infraction.
+ * Clamp sur la valeur max si $n dépasse la table.
+ *
+ * @param string $axe 'PAIR_IP_EMAIL' | 'GLOBAL_IP' | 'GLOBAL_EMAIL'
+ * @param int $niveau Numéro d'infraction (>=1)
+ */
+function duree_blocage_escalade(string $axe, int $niveau): int
+{
+    $niveau = max(1, $niveau);
+    switch ($axe) {
+        case 'PAIR_IP_EMAIL':
+            $t = LOGIN_DUREE_PAIR_SEC;
+            break;
+        case 'GLOBAL_IP':
+            $t = LOGIN_DUREE_IP_SEC;
+            break;
+        case 'GLOBAL_EMAIL':
+            $t = LOGIN_DUREE_EMAIL_SEC;
+            break;
+        case 'GLOBAL_IP_INSCRIPTION':
+            $t = defined('INSCRIPTION_DUREE_IP_SEC') ? INSCRIPTION_DUREE_IP_SEC : [1 => 300, 2 => 3600, 3 => 86400];
+            break;
+        default:
+            $t = LOGIN_DUREE_PAIR_SEC;
+    }
+    $t = is_array($t) ? $t : [1 => (int) $t];
+    ksort($t);
+    $cleMax = max(array_keys($t));
+    $choisie = min($niveau, $cleMax);
+    return (int) ($t[$choisie] ?? end($t));
+}
+
+/**
+ * Prochain niveau d'infraction pour une clé (axe, ip, email).
+ * Compte le nombre de verrous (même expirés) créés dans la fenêtre
+ * LOGIN_ESCALADE_HISTORIQUE_H sur la même clé, +1 pour la nouvelle
+ * infraction.
+ */
+function prochain_niveau_infraction(string $axe, string $ip, string $email): int
+{
+    migrer_login_blocages_si_besoin();
+    try {
+        $pdo = get_pdo();
+        $heures = (int) LOGIN_ESCALADE_HISTORIQUE_H;
+        $stmt = $pdo->prepare(
+            "SELECT COALESCE(MAX(infraction_n), 0) AS n
+             FROM login_blocages
+             WHERE axe = :axe AND ip = :ip AND email = :email
+               AND created_at > DATE_SUB(NOW(), INTERVAL {$heures} HOUR)"
+        );
+        $stmt->execute(compact('axe', 'ip', 'email'));
+        $n = (int) $stmt->fetchColumn();
+        return max(1, $n + 1);
+    } catch (Throwable) {
+        return 1;
+    }
+}
+
+function prochain_niveau_infraction_inscription(string $ip): int
+{
+    migrer_login_blocages_si_besoin();
+    try {
+        $pdo = get_pdo();
+        $heures = defined('INSCRIPTION_ESCALADE_HISTORIQUE_H')
+            ? (int) INSCRIPTION_ESCALADE_HISTORIQUE_H
+            : 48;
+        $stmt = $pdo->prepare(
+            "SELECT COALESCE(MAX(infraction_n), 0) AS n
+             FROM login_blocages
+             WHERE axe = 'GLOBAL_IP_INSCRIPTION' AND ip = :ip AND email = ''
+               AND created_at > DATE_SUB(NOW(), INTERVAL {$heures} HOUR)"
+        );
+        $stmt->execute(['ip' => substr($ip, 0, 45)]);
+        $n = (int) $stmt->fetchColumn();
+        return max(1, $n + 1);
+    } catch (Throwable) {
+        return 1;
+    }
+}
+
+// ========================================================================
+// Comptage des tentatives d'inscription (fenêtre glissante, IP seule)
+// ========================================================================
+
+function enregistrer_tentative_inscription(string $ip): void
 {
     try {
         $pdo = get_pdo();
         $stmt = $pdo->prepare(
-            'SELECT bloque_jusqu_a FROM login_blocages
-             WHERE ip = :ip AND email = :email LIMIT 1'
+            "INSERT INTO tentatives_login_detail (ip, email, tentative_at, succes)
+             VALUES (:ip, '', NOW(), 0)"
+        );
+        $stmt->execute(['ip' => substr($ip, 0, 45)]);
+    } catch (Throwable) {
+    }
+}
+
+/**
+ * @return int Nombre de tentatives d'inscription (POST sur register.php)
+ *             déjà observées sur l'IP dans la fenêtre configurée.
+ */
+function compter_tentatives_inscription_dans_fenetre(string $ip): int
+{
+    try {
+        $pdo = get_pdo();
+        $minutes = defined('INSCRIPTION_FENETRE_COMPTAGE_MIN')
+            ? (int) INSCRIPTION_FENETRE_COMPTAGE_MIN
+            : 60;
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM tentatives_login_detail
+             WHERE ip = :ip AND email = '' AND succes = 0
+               AND tentative_at > DATE_SUB(NOW(), INTERVAL {$minutes} MINUTE)"
+        );
+        $stmt->execute(['ip' => substr($ip, 0, 45)]);
+        return (int) $stmt->fetchColumn();
+    } catch (Throwable) {
+        return 0;
+    }
+}
+
+/**
+ * Pose ou remplace un verrou.
+ *
+ * Règles d'ergonomie sécurité :
+ *  - La durée est toujours celle du NOUVEAU niveau escaladé (pas max avec l'ancien).
+ *  - Si un verrou plus long est DÉJÀ en cours (GREATEST), on ne LE RACCOURCIT PAS
+ *    (évite qu'une attaque rapide en remplace un long par un plus court).
+ *  - Pour les axes globaux :
+ *      GLOBAL_IP     → email=''
+ *      GLOBAL_EMAIL  → ip=''
+ *
+ * @param int $niveau Infraction_n à inscrire sur le verrou posé.
+ */
+function poser_verrou_axe(string $axe, string $ip, string $email, int $niveau): void
+{
+    migrer_login_blocages_si_besoin();
+    try {
+        $duree = duree_blocage_escalade($axe, $niveau);
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare(
+            "INSERT INTO login_blocages (axe, ip, email, bloque_jusqu_a, infraction_n)
+             VALUES (:axe, :ip, :email, DATE_ADD(NOW(), INTERVAL :d SECOND), :niv)
+             ON DUPLICATE KEY UPDATE
+                 bloque_jusqu_a = GREATEST(
+                     bloque_jusqu_a,
+                     DATE_ADD(NOW(), INTERVAL :d2 SECOND)
+                 ),
+                 infraction_n = GREATEST(infraction_n, :niv2)"
         );
         $stmt->execute([
+            'axe'  => $axe,
+            'ip'   => substr($ip, 0, 45),
+            'email'=> normaliser_email($email),
+            'd'    => $duree,
+            'd2'   => $duree,
+            'niv'  => $niveau,
+            'niv2' => $niveau,
+        ]);
+    } catch (Throwable) {
+    }
+}
+
+/**
+ * Récupère le statut d'un verrou d'un axe donné.
+ *
+ * @return array{bloque:bool, secondes_restantes:int, axe:string, infraction_n:int}
+ */
+function statut_verrou_axe(string $axe, string $ip, string $email): array
+{
+    migrer_login_blocages_si_besoin();
+    $vide = ['bloque' => false, 'secondes_restantes' => 0, 'axe' => $axe, 'infraction_n' => 0];
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare(
+            "SELECT bloque_jusqu_a, infraction_n FROM login_blocages
+             WHERE axe = :axe AND ip = :ip AND email = :email LIMIT 1"
+        );
+        $stmt->execute([
+            'axe'   => $axe,
             'ip'    => substr($ip, 0, 45),
             'email' => normaliser_email($email),
         ]);
         $row = $stmt->fetch();
         if (!is_array($row) || empty($row['bloque_jusqu_a'])) {
-            return ['bloque' => false, 'secondes_restantes' => 0];
+            return $vide;
         }
-        $dateFin = new DateTimeImmutable((string)$row['bloque_jusqu_a']);
+        $dateFin = new DateTimeImmutable((string) $row['bloque_jusqu_a']);
         $maintenant = new DateTimeImmutable();
-        $secondes = $dateFin->getTimestamp() - $maintenant->getTimestamp();
-        if ($secondes <= 0) {
-            return ['bloque' => false, 'secondes_restantes' => 0];
+        $s = $dateFin->getTimestamp() - $maintenant->getTimestamp();
+        if ($s <= 0) {
+            return $vide;
         }
-        return ['bloque' => true, 'secondes_restantes' => $secondes];
+        return [
+            'bloque'              => true,
+            'secondes_restantes'  => $s,
+            'axe'                 => $axe,
+            'infraction_n'        => (int) $row['infraction_n'],
+        ];
     } catch (Throwable) {
-        return ['bloque' => false, 'secondes_restantes' => 0];
+        return $vide;
+    }
+}
+
+// ========================================================================
+// Axes individuels (wrappers typés)
+// ========================================================================
+
+function poser_verrou_pair(string $email, string $ip): void
+{
+    $niv = prochain_niveau_infraction('PAIR_IP_EMAIL', $ip, normaliser_email($email));
+    poser_verrou_axe('PAIR_IP_EMAIL', $ip, normaliser_email($email), $niv);
+}
+
+function poser_verrou_ip(string $ip): void
+{
+    $niv = prochain_niveau_infraction('GLOBAL_IP', substr($ip, 0, 45), '');
+    poser_verrou_axe('GLOBAL_IP', substr($ip, 0, 45), '', $niv);
+}
+
+function poser_verrou_email(string $email): void
+{
+    $e = normaliser_email($email);
+    $niv = prochain_niveau_infraction('GLOBAL_EMAIL', '', $e);
+    poser_verrou_axe('GLOBAL_EMAIL', '', $e, $niv);
+}
+
+/**
+ * @return array{bloque:bool, secondes_restantes:int, axe:string, infraction_n:int}
+ */
+function statut_verrou_pair(string $email, string $ip): array
+{
+    return statut_verrou_axe('PAIR_IP_EMAIL', $ip, normaliser_email($email));
+}
+
+/**
+ * @return array{bloque:bool, secondes_restantes:int, axe:string, infraction_n:int}
+ */
+function statut_verrou_ip(string $ip): array
+{
+    return statut_verrou_axe('GLOBAL_IP', substr($ip, 0, 45), '');
+}
+
+/**
+ * @return array{bloque:bool, secondes_restantes:int, axe:string, infraction_n:int}
+ */
+function statut_verrou_email(string $email): array
+{
+    return statut_verrou_axe('GLOBAL_EMAIL', '', normaliser_email($email));
+}
+
+function poser_verrou_inscription_ip(string $ip): void
+{
+    $i = substr($ip, 0, 45);
+    $niv = prochain_niveau_infraction_inscription($i);
+    poser_verrou_axe('GLOBAL_IP_INSCRIPTION', $i, '', $niv);
+}
+
+/**
+ * @return array{bloque:bool, secondes_restantes:int, axe:string, infraction_n:int}
+ */
+function statut_verrou_inscription_ip(string $ip): array
+{
+    return statut_verrou_axe('GLOBAL_IP_INSCRIPTION', substr($ip, 0, 45), '');
+}
+
+function supprimer_verrou_inscription_ip(string $ip): void
+{
+    migrer_login_blocages_si_besoin();
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare(
+            "DELETE FROM login_blocages
+             WHERE axe = 'GLOBAL_IP_INSCRIPTION' AND ip = :ip AND email = ''"
+        );
+        $stmt->execute(['ip' => substr($ip, 0, 45)]);
+    } catch (Throwable) {
     }
 }
 
 /**
- * Pose (ou remplace) un verrou <IP, Email> pour LOGIN_LOCK_SECONDS secondes.
+ * Supprime TOUS les verrous qui concernent un couple <ip, email> — à savoir
+ * le verrou PAIR_IP_EMAIL exact, et aussi (le cas échéant) les verrous
+ * globaux GLOBAL_IP / GLOBAL_EMAIL associés. Ne supprime PAS les autres
+ * paires de l'IP globale ni les autres IP d'un email global.
  */
+function supprimer_verrou_couple(string $email, string $ip): void
+{
+    migrer_login_blocages_si_besoin();
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare(
+            "DELETE FROM login_blocages
+             WHERE (axe = 'PAIR_IP_EMAIL' AND ip = :ip AND email = :email)
+                OR (axe = 'GLOBAL_IP'    AND ip = :ip AND email = '')
+                OR (axe = 'GLOBAL_EMAIL' AND ip = ''  AND email = :email)"
+        );
+        $stmt->execute([
+            'ip'    => substr($ip, 0, 45),
+            'email' => normaliser_email($email),
+        ]);
+    } catch (Throwable) {
+    }
+}
+
+// ========================================================================
+// Fusion multi-axes — UNIQUE POINT D'ENTRÉE pour le pre-check
+// ========================================================================
+
+/**
+ * Fusionne le statut des 3 axes. Retourne :
+ *  - bloque              : TRUE si au moins 1 axe est bloqué
+ *  - secondes_restantes  : MAX() des délais restants (le + restrictif)
+ *  - axes_declenches     : liste détaillée pour logs/j post (pas affichée à l'utilisateur)
+ *
+ * @return array{bloque:bool, secondes_restantes:int, axes_declenches:list<array>}
+ */
+function fusionner_statuts_verrous(string $ip, string $email): array
+{
+    $sPair  = statut_verrou_pair($email, $ip);
+    $sIp    = statut_verrou_ip($ip);
+    $sEmail = statut_verrou_email($email);
+
+    $tous = [$sPair, $sIp, $sEmail];
+    $axes = array_values(array_filter($tous, static fn (array $s): bool => !empty($s['bloque'])));
+
+    $max = 0;
+    foreach ($tous as $s) {
+        if (!empty($s['secondes_restantes']) && (int)$s['secondes_restantes'] > $max) {
+            $max = (int) $s['secondes_restantes'];
+        }
+    }
+    return [
+        'bloque'             => $axes !== [],
+        'secondes_restantes' => $max,
+        'axes_declenches'    => $axes,
+    ];
+}
+
+// ========================================================================
+// Compatibilité ascendante (anciens noms appelés depuis d'autres scripts)
+// ========================================================================
+function statut_verrou_login(string $email, string $ip): array
+{
+    $s = statut_verrou_pair($email, $ip);
+    return ['bloque' => $s['bloque'], 'secondes_restantes' => $s['secondes_restantes']];
+}
+
 function poser_verrou_login(string $email, string $ip): void
 {
-    if (!defined('LOGIN_LOCK_SECONDS')) {
-        return;
-    }
-    try {
-        $pdo = get_pdo();
-        $duree = (int) LOGIN_LOCK_SECONDS;
-        $stmt = $pdo->prepare(
-            'INSERT INTO login_blocages (ip, email, bloque_jusqu_a)
-             VALUES (:ip, :email, DATE_ADD(NOW(), INTERVAL :d SECOND))
-             ON DUPLICATE KEY UPDATE bloque_jusqu_a = DATE_ADD(NOW(), INTERVAL :d2 SECOND)'
-        );
-        $stmt->execute([
-            'ip'    => substr($ip, 0, 45),
-            'email' => normaliser_email($email),
-            'd'     => $duree,
-            'd2'    => $duree,
-        ]);
-    } catch (Throwable) {
-    }
+    poser_verrou_pair($email, $ip);
 }
 
-/**
- * Supprime le verrou <IP, Email> (appelé après un succès ou une expiration).
- */
 function supprimer_verrou_login(string $email, string $ip): void
 {
-    try {
-        $pdo = get_pdo();
-        $stmt = $pdo->prepare(
-            'DELETE FROM login_blocages WHERE ip = :ip AND email = :email'
-        );
-        $stmt->execute([
-            'ip'    => substr($ip, 0, 45),
-            'email' => normaliser_email($email),
-        ]);
-    } catch (Throwable) {
-    }
+    supprimer_verrou_couple($email, $ip);
 }
 
 /**
- * Politique de fallback en fenêtre glissante.
- * Ne conserve que l'axe <IP, Email> comme seuil de détection redondant.
- * Les axes globaux <IP> et <Email> sont réintroduits via des verrous
- * explicites dans la phase d'escalade (Défaut 3).
+ * @deprecated Défaut 3 — Utiliser fusionner_statuts_verrous() depuis login_blocages.
+ *             Ancienne logique de fallback en fenêtre glissante sur tentatives_login_detail
+ *             (seulement l'axe <IP, Email>). Conservée pour sécurité si appelée depuis
+ *             un module externe, mais connecter_utilisateur() ne l'utilise plus.
  *
  * @return array{bloque:bool, secondes_restantes:int}
  */
@@ -550,11 +916,16 @@ function connecter_utilisateur(string $email, string $motDePasse): array
         $email = normaliser_email($email);
         $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
 
-        // PRIORITÉ 1 : VERROU EXPLICITE <IP, Email> sur table login_blocages.
-        // Si actif → réponse BLOQUÉ immédiate (le délai est précis, 1 décrément/sec),
-        // SANS évaluer les axes en fenêtres ni faire de max avec d'autres délais.
-        $statutVerrou = statut_verrou_login($email, $ip);
-        if ($statutVerrou['bloque']) {
+        migrer_login_blocages_si_besoin();
+
+        // ============================================================
+        // PRE-CHECK UNIQUE : fusion des 3 axes + MAX des durées.
+        // La table login_blocages est LA SEULE source de vérité pour
+        // l'affichage du délai restant (décrémenté chaque seconde).
+        // Aucun fallback à seuil fenêtre, aucun plafonnement.
+        // ============================================================
+        $statut = fusionner_statuts_verrous($ip, $email);
+        if ($statut['bloque']) {
             if (rand(1, 100) === 1) {
                 purger_journal_ancien();
                 purger_tentatives_login_anciennes();
@@ -565,52 +936,38 @@ function connecter_utilisateur(string $email, string $motDePasse): array
             }
             ralentir_exponentiel(LOGIN_MAX_FAILURES);
             $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-            journaliser_action(null, 'connexion_echec', $emailMasque . ' (bloqué)');
-            $secondes = (int) $statutVerrou['secondes_restantes'];
+
+            $axesDetails = '';
+            if (!empty($statut['axes_declenches'])) {
+                $axes = [];
+                foreach ($statut['axes_declenches'] as $a) {
+                    $axes[] = sprintf(
+                        '%s(n=%d)',
+                        (string) $a['axe'],
+                        (int) ($a['infraction_n'] ?? 1)
+                    );
+                }
+                $axesDetails = ' [' . implode(', ', $axes) . ']';
+            }
+            journaliser_action(null, 'connexion_echec', $emailMasque . ' (bloqué)' . $axesDetails);
+
+            $secondes = max(0, (int) $statut['secondes_restantes']);
             return [
                 'ok' => false,
                 'bloque' => true,
                 'secondes_restantes' => $secondes,
                 'message' => 'Compte temporairement bloqué. Réessayez dans ' . $secondes . ' seconde(s).',
+                '_axes' => $statut['axes_declenches'],
             ];
         }
 
         if (rand(1, 100) === 1) {
             purger_journal_ancien();
             purger_tentatives_login_anciennes();
-            // Purge aussi les verrous explicitement expirés de login_blocages
             try {
                 get_pdo()->exec('DELETE FROM login_blocages WHERE bloque_jusqu_a <= NOW()');
             } catch (Throwable) {
             }
-        }
-
-        // PRIORITÉ 2 : politique en fenêtre (redondance, fallback).
-        // (Réduite à l'unique axe <IP, Email> 3/5 min → max 60 s.
-        //  Axes globaux IP / Email réintroduits dans la phase d'escalade Défaut 3.)
-        $statut = statut_blocage_login_detail($email);
-        // Fallback sûr vers ancienne table si la nouvelle retourne un échec silencieux (0,0)
-        if ($statut === ['bloque' => false, 'secondes_restantes' => 0]
-            && function_exists('statut_blocage_login')
-        ) {
-            $statutAncien = statut_blocage_login($email);
-            if ($statutAncien['bloque']) {
-                $statut = $statutAncien;
-            }
-        }
-        if (!empty($statut['bloque'])) {
-            // Plafonnement à 60 s pour éviter un affichage abusif 1 h / 30 min
-            // en attendant l'escalade (Défaut 3) qui posera des verrous explicites.
-            $secondes = min((int) ($statut['secondes_restantes'] ?? RL_IP_EMAIL_BLOCK_SEC), (int) RL_IP_EMAIL_BLOCK_SEC);
-            ralentir_exponentiel(LOGIN_MAX_FAILURES);
-            $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-            journaliser_action(null, 'connexion_echec', $emailMasque . ' (bloqué)');
-            return [
-                'ok' => false,
-                'bloque' => true,
-                'secondes_restantes' => $secondes,
-                'message' => 'Compte temporairement bloqué. Réessayez dans ' . $secondes . ' seconde(s).',
-            ];
         }
 
         $nbEchecsPrecedents = 0;
@@ -641,22 +998,46 @@ function connecter_utilisateur(string $email, string $motDePasse): array
             enregistrer_echec_login($email);
             enregistrer_tentative_login_detail($email, $ip, false);
 
-            // Pose un VERROU EXPLICITE 60 s si on atteint LOGIN_LOCK_MAX_FAILURES
-            // sur l'axe <IP, Email> dans les 5 dernières minutes
+            // ============================================================
+            // Pose des VERROUS EXPLICITES multi-axes (escalade).
+            // Chaque seuil est évalué via COUNT() sur tentatives_login_detail.
+            // Les durées sont choisies via l'historique d'infraction_n sur
+            // les 24 dernières heures de la clé.
+            // ============================================================
             try {
                 $pdo = get_pdo();
-                $seuil = defined('LOGIN_LOCK_MAX_FAILURES')
-                    ? (int) LOGIN_LOCK_MAX_FAILURES
-                    : (int) RL_IP_EMAIL_MAX_5MIN;
-                $stmt = $pdo->prepare(
+
+                $stmtPair = $pdo->prepare(
                     "SELECT COUNT(*) FROM tentatives_login_detail
                      WHERE ip = :ip AND email = :email AND succes = 0
                        AND tentative_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
                 );
-                $stmt->execute(['ip' => $ip, 'email' => $email]);
-                $nbEchecs5min = (int) $stmt->fetchColumn();
-                if ($nbEchecs5min >= $seuil) {
-                    poser_verrou_login($email, $ip);
+                $stmtPair->execute(['ip' => $ip, 'email' => $email]);
+                $cntPair = (int) $stmtPair->fetchColumn();
+                if ($cntPair >= (int) LOGIN_SEUIL_PAIR_MAX_5MIN) {
+                    poser_verrou_pair($email, $ip);
+                }
+
+                $stmtIp = $pdo->prepare(
+                    "SELECT COUNT(*) FROM tentatives_login_detail
+                     WHERE ip = :ip AND succes = 0
+                       AND tentative_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+                );
+                $stmtIp->execute(['ip' => $ip]);
+                $cntIp = (int) $stmtIp->fetchColumn();
+                if ($cntIp >= (int) LOGIN_SEUIL_IP_MAX_1H) {
+                    poser_verrou_ip($ip);
+                }
+
+                $stmtEmail = $pdo->prepare(
+                    "SELECT COUNT(*) FROM tentatives_login_detail
+                     WHERE email = :email AND succes = 0
+                       AND tentative_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+                );
+                $stmtEmail->execute(['email' => $email]);
+                $cntEmail = (int) $stmtEmail->fetchColumn();
+                if ($cntEmail >= (int) LOGIN_SEUIL_EMAIL_MAX_1H) {
+                    poser_verrou_email($email);
                 }
             } catch (Throwable) {
             }
@@ -668,7 +1049,7 @@ function connecter_utilisateur(string $email, string $motDePasse): array
         }
 
         reinitialiser_tentatives_login($email);
-        supprimer_verrou_login($email, $ip);
+        supprimer_verrou_couple($email, $ip);
         enregistrer_tentative_login_detail($email, $ip, true);
         session_regenerate_id(true);
 
