@@ -39,7 +39,9 @@ try {
         reponse_json(['ok' => false, 'message' => 'Entrée introuvable.'], 404);
     }
 
-    reponse_json(['ok' => true, 'password' => $password]);
+    reponse_json(['ok' => true, 'password' => $password,
+        'csrf_token' => csrf_token(),
+        'ajax_token' => (string) ($_SESSION['ajax_token'] ?? '')]);
 } catch (Throwable) {
     reponse_json(['ok' => false, 'message' => 'Déchiffrement impossible.'], 500);
 }

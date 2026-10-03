@@ -123,4 +123,4 @@ afficher_debut_page('Ajouter');
         <?php endif; ?>
     </form>
 </section>
-<?php afficher_fin_page('assets/js/generateur.js', 'assets/js/force_mdp.js'); ?>
+<?php afficher_fin_page('assets/js/force_mdp.js', 'assets/js/generateur.js'); ?>

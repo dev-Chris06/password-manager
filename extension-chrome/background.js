@@ -12,13 +12,18 @@ const DEFAULT_BASE_URL = "http://localhost/password-manager";
 const SESSION_COOKIE_NAME = "gestionnaire_mdp_session";
 
 function normalizeBaseUrl(value) {
-  const candidate = String(value || DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
+  const candidate = String(value || DEFAULT_BASE_URL)
+    .trim()
+    .replace(/\/+$/, "");
 
   try {
     const url = new URL(candidate);
     const allowedHosts = ["localhost", "127.0.0.1"];
 
-    if (!["http:", "https:"].includes(url.protocol) || !allowedHosts.includes(url.hostname)) {
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      !allowedHosts.includes(url.hostname)
+    ) {
       return DEFAULT_BASE_URL;
     }
 
@@ -45,27 +50,25 @@ function getSessionCookie(url) {
       return;
     }
 
-    chrome.cookies.get({
-      url: `${parsedUrl.protocol}//${parsedUrl.host}/`,
-      name: SESSION_COOKIE_NAME,
-    }, (cookie) => {
-      if (chrome.runtime.lastError) {
-        resolve("");
-        return;
-      }
+    chrome.cookies.get(
+      {
+        url: `${parsedUrl.protocol}//${parsedUrl.host}/`,
+        name: SESSION_COOKIE_NAME,
+      },
+      (cookie) => {
+        if (chrome.runtime.lastError) {
+          resolve("");
+          return;
+        }
 
-      resolve(cookie?.value || "");
-    });
+        resolve(cookie?.value || "");
+      },
+    );
   });
 }
 
 async function fetchJson(url, options = {}) {
   const headers = new Headers(options.headers || {});
-  const sessionId = await getSessionCookie(url);
-
-  if (sessionId !== "") {
-    headers.set("X-Gestionnaire-Session", sessionId);
-  }
 
   const response = await fetch(url, {
     ...options,
@@ -89,11 +92,87 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+const _ongletsActifs = new Set();
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id || !tab.url) return;
+
+  try {
+    const url = new URL(tab.url);
+    if (!["http:", "https:"].includes(url.protocol)) {
+      try {
+        chrome.action.setBadgeText({ tabId: tab.id, text: "X" });
+      } catch {}
+      setTimeout(() => {
+        try {
+          chrome.action.setBadgeText({ tabId: tab.id, text: "" });
+        } catch {}
+      }, 1500);
+      return;
+    }
+
+    if (_ongletsActifs.has(tab.id)) {
+      try {
+        chrome.tabs
+          .sendMessage(tab.id, {
+            source: MESSAGE_SOURCE,
+            type: "TOGGLE_PANEL",
+          })
+          .catch(() => {});
+      } catch {}
+      return;
+    }
+
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"],
+    });
+
+    _ongletsActifs.add(tab.id);
+
+    try {
+      chrome.action.setBadgeText({ tabId: tab.id, text: "ON" });
+      chrome.action.setBadgeBackgroundColor({
+        tabId: tab.id,
+        color: "#16a34a",
+      });
+    } catch {}
+  } catch (_err) {
+    try {
+      chrome.action.setBadgeText({ tabId: tab.id, text: "KO" });
+      chrome.action.setBadgeBackgroundColor({
+        tabId: tab.id,
+        color: "#dc2626",
+      });
+    } catch {}
+    setTimeout(() => {
+      try {
+        chrome.action.setBadgeText({ tabId: tab.id, text: "" });
+      } catch {}
+    }, 2000);
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  _ongletsActifs.delete(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url) {
+    _ongletsActifs.delete(tabId);
+    try {
+      chrome.action.setBadgeText({ tabId, text: "" });
+    } catch {}
+  }
+});
+
 async function saveGeneratedPassword(payload) {
   const baseUrl = await getBaseUrl();
   const domain = String(payload.domain || "").replace(/^www\./, "");
 
-  const tokenData = await fetchJson(`${baseUrl}/ajax/remplissage.php?domaine=${encodeURIComponent(domain)}`);
+  const tokenData = await fetchJson(
+    `${baseUrl}/ajax/remplissage.php?domaine=${encodeURIComponent(domain)}`,
+  );
   const body = new URLSearchParams({
     csrf_token: String(tokenData.csrf_token || ""),
     site: domain,
@@ -119,7 +198,9 @@ async function saveGeneratedPassword(payload) {
 async function loadDomainEntries(payload) {
   const baseUrl = await getBaseUrl();
   const domain = String(payload.domain || "").replace(/^www\./, "");
-  const data = await fetchJson(`${baseUrl}/ajax/remplissage.php?domaine=${encodeURIComponent(domain)}`);
+  const data = await fetchJson(
+    `${baseUrl}/ajax/remplissage.php?domaine=${encodeURIComponent(domain)}`,
+  );
 
   return {
     ok: true,
@@ -156,11 +237,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "SAVE_GENERATED_PASSWORD") {
     saveGeneratedPassword(message.payload || {})
       .then((result) => sendResponse(result))
-      .catch((error) => sendResponse({
-        ok: false,
-        message: error.message || "Enregistrement impossible.",
-        status: error.status || 0,
-      }));
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          message: error.message || "Enregistrement impossible.",
+          status: error.status || 0,
+        }),
+      );
 
     return true;
   }
@@ -168,11 +251,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "GET_DOMAIN_ENTRIES") {
     loadDomainEntries(message.payload || {})
       .then((result) => sendResponse(result))
-      .catch((error) => sendResponse({
-        ok: false,
-        message: error.message || "Comptes introuvables.",
-        status: error.status || 0,
-      }));
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          message: error.message || "Comptes introuvables.",
+          status: error.status || 0,
+        }),
+      );
 
     return true;
   }
@@ -180,11 +265,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "DECRYPT_ENTRY") {
     decryptEntryPassword(message.payload || {})
       .then((result) => sendResponse(result))
-      .catch((error) => sendResponse({
-        ok: false,
-        message: error.message || "Dechiffrement impossible.",
-        status: error.status || 0,
-      }));
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          message: error.message || "Dechiffrement impossible.",
+          status: error.status || 0,
+        }),
+      );
 
     return true;
   }

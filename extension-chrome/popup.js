@@ -1,6 +1,5 @@
 const DEFAULT_BASE_URL = "http://localhost/password-manager";
 const MESSAGE_SOURCE = "GESTIONNAIRE_MDP_EXTENSION";
-const SESSION_COOKIE_NAME = "gestionnaire_mdp_session";
 
 const elements = {
   baseUrl: document.getElementById("baseUrl"),
@@ -14,6 +13,7 @@ const elements = {
 let activeTab = null;
 let currentDomain = "";
 let csrfToken = "";
+let ajaxToken = "";
 let entries = [];
 
 function setStatus(message, isError = false) {
@@ -68,35 +68,11 @@ function sendTabMessage(tabId, message) {
   });
 }
 
-function getSessionCookie(url) {
-  return new Promise((resolve) => {
-    const parsedUrl = new URL(url);
-
-    if (!["localhost", "127.0.0.1"].includes(parsedUrl.hostname)) {
-      resolve("");
-      return;
-    }
-
-    chrome.cookies.get({
-      url: `${parsedUrl.protocol}//${parsedUrl.host}/`,
-      name: SESSION_COOKIE_NAME,
-    }, (cookie) => {
-      if (chrome.runtime.lastError) {
-        resolve("");
-        return;
-      }
-
-      resolve(cookie?.value || "");
-    });
-  });
-}
-
 async function fetchJson(url, options = {}) {
   const headers = new Headers(options.headers || {});
-  const sessionId = await getSessionCookie(url);
 
-  if (sessionId !== "") {
-    headers.set("X-Gestionnaire-Session", sessionId);
+  if (ajaxToken !== "") {
+    headers.set("X-Ajax-Token", ajaxToken);
   }
 
   const response = await fetch(url, {
@@ -117,6 +93,13 @@ async function fetchJson(url, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     throw error;
+  }
+
+  if (typeof data.ajax_token === "string" && data.ajax_token !== "") {
+    ajaxToken = data.ajax_token;
+  }
+  if (typeof data.csrf_token === "string" && data.csrf_token !== "") {
+    csrfToken = data.csrf_token;
   }
 
   return data;
@@ -214,6 +197,9 @@ async function loadEntries() {
   setStatus("Recherche des comptes...");
   const data = await fetchJson(url);
   csrfToken = String(data.csrf_token || "");
+  if (typeof data.ajax_token === "string") {
+    ajaxToken = data.ajax_token;
+  }
   entries = Array.isArray(data.entries) ? data.entries : [];
   renderEntries();
 

@@ -117,30 +117,6 @@ function dechiffrer_mdp_gcm(string $mdpChiffre, string $ivEncode, string $authTa
     return $plain;
 }
 
-function dechiffrer_mdp_legacy_cbc(string $mdpChiffre, string $ivEncode, string $cleBinaire): string
-{
-    $ciphertext = decoder_base64_strict($mdpChiffre, 'Mot de passe legacy');
-    $iv = decoder_base64_strict($ivEncode, 'IV legacy');
-
-    if (strlen($iv) !== 16) {
-        throw new RuntimeException('IV legacy invalide.');
-    }
-
-    $plain = openssl_decrypt(
-        $ciphertext,
-        CRYPTO_METHOD_LEGACY_CBC,
-        $cleBinaire,
-        OPENSSL_RAW_DATA,
-        $iv
-    );
-
-    if ($plain === false) {
-        throw new RuntimeException('Échec du déchiffrement legacy.');
-    }
-
-    return $plain;
-}
-
 function hash_mot_de_passe_maitre(string $motDePasseMaitre): string
 {
     return password_hash($motDePasseMaitre, PASSWORD_BCRYPT, ['cost' => BCRYPT_COST]);

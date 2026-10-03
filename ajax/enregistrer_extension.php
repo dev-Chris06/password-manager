@@ -69,7 +69,7 @@ $identifiant = nettoyer_texte((string) ($_POST['identifiant'] ?? ''), 255);
 $motDePasse = (string) ($_POST['password'] ?? '');
 $categorie = categorie_extension_valide((string) ($_POST['categorie'] ?? 'Autre'));
 
-if ($site === '' || $identifiant === '' || strlen($motDePasse) < 8) {
+if ($site === '' || $identifiant === '' || !mot_de_passe_valide($motDePasse)) {
     reponse_json_extension(['ok' => false, 'message' => 'Données invalides.'], 400);
 }
 
@@ -89,6 +89,8 @@ if (!($resultat['ok'] ?? false)) {
 reponse_json_extension([
     'ok' => true,
     'message' => 'Entrée enregistrée.',
+    'csrf_token' => csrf_token(),
+    'ajax_token' => (string) ($_SESSION['ajax_token'] ?? ''),
     'entry' => [
         'site' => $site,
         'identifiant' => $identifiant,

@@ -12,13 +12,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+exiger_authentification();
+
 if (!verifier_csrf($_POST['csrf_token'] ?? null)) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'message' => 'Requête invalide.']);
     exit;
 }
-
-exiger_authentification();
 
 $backup = $_POST['backup'] ?? '';
 if ($backup === '') {
@@ -54,6 +54,14 @@ try {
     $importees = 0;
     $doublons = 0;
 
+    $doublonsMap = [];
+    $mapStmt = get_pdo()->prepare('SELECT site, identifiant FROM entrees WHERE user_id = :user_id');
+    $mapStmt->execute(['user_id' => $userId]);
+    foreach ($mapStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $key = $row['site'] . "\x00" . $row['identifiant'];
+        $doublonsMap[$key] = true;
+    }
+
     foreach ($payload['entries'] as $entry) {
         if (!isset($entry['categorie'], $entry['site'], $entry['identifiant'], $entry['password'])) {
             continue;
@@ -68,16 +76,8 @@ try {
             continue;
         }
 
-        $stmt = get_pdo()->prepare(
-            'SELECT id FROM entrees WHERE user_id = :user_id AND site = :site AND identifiant = :identifiant LIMIT 1'
-        );
-        $stmt->execute([
-            'user_id' => $userId,
-            'site' => $site,
-            'identifiant' => $identifiant,
-        ]);
-
-        if ($stmt->fetch() !== false) {
+        $key = $site . "\x00" . $identifiant;
+        if (isset($doublonsMap[$key])) {
             $doublons++;
             continue;
         }
@@ -97,6 +97,7 @@ try {
                 'iv' => $encrypted['iv'],
                 'auth_tag' => $encrypted['auth_tag'],
             ]);
+            $doublonsMap[$key] = true;
             $importees++;
         } catch (Throwable) {
             continue;
@@ -110,6 +111,8 @@ try {
         'message' => sprintf('%d entrée(s) importée(s). %d doublon(s) ignoré(s).', $importees, $doublons),
         'importees' => $importees,
         'doublons' => $doublons,
+        'csrf_token' => csrf_token(),
+        'ajax_token' => (string) ($_SESSION['ajax_token'] ?? ''),
     ]);
 } catch (Throwable $e) {
     http_response_code(500);
