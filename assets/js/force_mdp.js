@@ -54,7 +54,6 @@ function afficherForceMdp(motDePasse, containerId) {
   }
 
   const result = evaluerForceMdp(motDePasse);
-
   let colorClass = "faible";
   if (result.niveau === "très fort") {
     colorClass = "tres-fort";
@@ -64,28 +63,40 @@ function afficherForceMdp(motDePasse, containerId) {
     colorClass = "moyen";
   }
 
-  const barWidth = Math.min(result.score, 100);
+  const root = document.createElement("div");
+  root.className = "password-strength";
 
-  container.innerHTML = `
-        <div class="password-strength">
-            <div class="strength-bar">
-                <div class="strength-fill ${colorClass}" style="width: ${barWidth}%"></div>
-            </div>
-            <div class="strength-text">
-                <span class="strength-label ${colorClass}">${result.niveau.charAt(0).toUpperCase() + result.niveau.slice(1)}</span>
-                <span class="strength-score">${result.score}/100</span>
-            </div>
-            ${
-              result.alertes.length > 0
-                ? `
-                <div class="strength-alerts">
-                    ${result.alertes.map((alerte) => `<span class="alert-item">${alerte}</span>`).join("")}
-                </div>
-            `
-                : ""
-            }
-        </div>
-    `;
+  const bar = document.createElement("div");
+  bar.className = "strength-bar";
+  const fill = document.createElement("div");
+  fill.className = `strength-fill ${colorClass}`;
+  fill.style.width = `${Math.min(result.score, 100)}%`;
+  bar.append(fill);
+
+  const text = document.createElement("div");
+  text.className = "strength-text";
+  const label = document.createElement("span");
+  label.className = `strength-label ${colorClass}`;
+  label.textContent = result.niveau.charAt(0).toUpperCase() + result.niveau.slice(1);
+  const score = document.createElement("span");
+  score.className = "strength-score";
+  score.textContent = `${result.score}/100`;
+  text.append(label, score);
+
+  root.append(bar, text);
+  if (result.alertes.length > 0) {
+    const alerts = document.createElement("div");
+    alerts.className = "strength-alerts";
+    result.alertes.forEach((alerte) => {
+      const item = document.createElement("span");
+      item.className = "alert-item";
+      item.textContent = alerte;
+      alerts.append(item);
+    });
+    root.append(alerts);
+  }
+
+  container.replaceChildren(root);
 }
 
 (function () {

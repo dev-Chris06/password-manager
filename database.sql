@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
     hash_mdp VARCHAR(255) NOT NULL,
     sel_pbkdf2 VARCHAR(128) NOT NULL,
     totp_secret VARCHAR(255) NULL DEFAULT NULL,
+    totp_secret_iv VARCHAR(255) NULL DEFAULT NULL,
+    totp_secret_tag VARCHAR(255) NULL DEFAULT NULL,
     totp_active TINYINT(1) NOT NULL DEFAULT 0,
     last_totp_slot BIGINT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -80,7 +82,7 @@ CREATE TABLE IF NOT EXISTS tentatives_login_detail (
 -- `infraction_n` est incrémenté si une même clé (axe + discriminants)
 -- a connu un autre verrou expiré dans les dernières 24 h, pour
 -- l'escalade des durées. La clé UNIQUE est composite (axe, ip, email).
-CREATE TABLE login_blocages (
+CREATE TABLE IF NOT EXISTS login_blocages (
     id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     axe            ENUM('PAIR_IP_EMAIL', 'GLOBAL_IP', 'GLOBAL_EMAIL', 'GLOBAL_IP_INSCRIPTION') NOT NULL,
     ip             VARCHAR(45)  NOT NULL DEFAULT '',

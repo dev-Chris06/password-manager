@@ -59,7 +59,7 @@ FLUSH PRIVILEGES;
 En ligne de commande :
 
 ```bash
-mysql -u gestionnaire_mdp -p gestionnaire_mdp < database.sql
+mysql -u password_manager -p password_manager < database.sql
 ```
 
 OU dans phpMyAdmin → onglet **Importer** → choisir `database.sql` → Exécuter.
@@ -77,9 +77,9 @@ Ouvre `.env` et **au minimum** :
 ```dotenv
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_NAME=gestionnaire_mdp
-DB_USER=gestionnaire_mdp
-DB_PASSWORD=met-un-mot-de-passe-long-Ici!
+DB_NAME=password_manager
+DB_USER=password_manager
+DB_PASS=met-un-mot-de-passe-long-Ici!
 APP_URL=http://localhost:8000
 ```
 
@@ -89,10 +89,8 @@ C'est un serveur PHP intégré léger, parfait pour tester :
 
 ```bash
 # (Si tu as déjà fait le hardening avec public/)
-php -S localhost:8000 -t public/
+php -S localhost:8000 -t public/ public/router.php
 
-# (Sans le dossier public/, juste l'arbo ancienne, toujours OK)
-php -S localhost:8000
 ```
 
 Ouvre `http://localhost:8000` dans ton navigateur. Tu dois voir la page de login.
@@ -137,26 +135,12 @@ La **racine web** de ton hébergeur est typiquement :
 - Uploade **tout le repo** dans un dossier de travail (ex. `~/password-manager-src`)
 - Pointeur la racine web de l'hébergeur vers `~/password-manager-src/public` (demande au support d'ajouter un alias dans "Domaines > Chemin racine", ou utilise un `.htaccess` en sous-arbo).
 
-**Sans structure `public/` (plus simple pour un test)** :
+**La racine du dépôt ne doit jamais être le DocumentRoot** :
 
-- Uploade directement **tous les fichiers/dossiers** dans le DocumentRoot.
-- Vérifie **À LA MAIN** que tu as bien un `.htaccess` à la racine avec :
+- Configure le DocumentRoot sur `public/`, qui contient le routeur et le fichier `.htaccess`.
+- Ne publie jamais le répertoire parent : il contient `.env`, les migrations, le schéma et les dépendances.
 
-```apache
-# Empêche de télécharger .env / .sql / config en cas de DOCROOT mal configuré
-<FilesMatch "\.(env|sql|ini|log|phar)$">
-    Require all denied
-</FilesMatch>
-
-# Bloque le listage des dossiers si Options activées
-<IfModule mod_autoindex.c>
-    Options -Indexes
-</IfModule>
-
-# Protège le dossier includes/ et config/ si servis en HTTP
-RedirectMatch 403 ^/includes/
-RedirectMatch 403 ^/config/
-```
+Pour Apache, le `.htaccess` fourni dans `public/` active le routeur. Pour Nginx, configure une règle équivalente vers `public/router.php`.
 
 ### Étape B.4 : Créer `.env` à côté de `index.php`
 

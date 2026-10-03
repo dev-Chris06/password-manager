@@ -446,66 +446,9 @@ function purger_tentatives_login_anciennes(): void
  */
 function migrer_login_blocages_si_besoin(): void
 {
-    static $fait = false;
-    if ($fait === true) {
-        return;
-    }
-    try {
-        $pdo = get_pdo();
-        $colonnes = $pdo->query("SHOW COLUMNS FROM login_blocages")->fetchAll(PDO::FETCH_COLUMN, 0);
-        $colonnes = array_map('strtolower', $colonnes);
-    } catch (Throwable $e) {
-        // Table n'existe pas ou autre erreur → on tente la création
-        $pdo = get_pdo();
-        $colonnes = [];
-    }
-
-    if (in_array('axe', $colonnes, true)) {
-        $fait = true;
-        return;
-    }
-
-    try {
-        if ($colonnes !== []) {
-            $existants = $pdo->query(
-                "SELECT ip, email, bloque_jusqu_a FROM login_blocages"
-            )->fetchAll(PDO::FETCH_ASSOC);
-        } else {
-            $existants = [];
-        }
-
-        $pdo->exec("DROP TABLE IF EXISTS login_blocages");
-        $pdo->exec("CREATE TABLE login_blocages (
-            id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            axe            ENUM('PAIR_IP_EMAIL', 'GLOBAL_IP', 'GLOBAL_EMAIL', 'GLOBAL_IP_INSCRIPTION') NOT NULL,
-            ip             VARCHAR(45)  NOT NULL DEFAULT '',
-            email          VARCHAR(255) NOT NULL DEFAULT '',
-            bloque_jusqu_a DATETIME     NOT NULL,
-            infraction_n   TINYINT UNSIGNED NOT NULL DEFAULT 1,
-            created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uq_login_blocages_axe (axe, ip, email),
-            INDEX idx_login_blocages_expire (bloque_jusqu_a)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-        if ($existants !== []) {
-            $ins = $pdo->prepare(
-                "INSERT INTO login_blocages (axe, ip, email, bloque_jusqu_a, infraction_n)
-                 VALUES ('PAIR_IP_EMAIL', :ip, :email, :bj, 1)"
-            );
-            foreach ($existants as $r) {
-                $ins->execute([
-                    'ip'    => (string) $r['ip'],
-                    'email' => (string) $r['email'],
-                    'bj'    => (string) $r['bloque_jusqu_a'],
-                ]);
-            }
-        }
-    } catch (Throwable) {
-        // Ne jamais casser l'authentification si la migration échoue.
-        // Les vieilles fonctions (fallback) prendront le relais.
-    } finally {
-        $fait = true;
-    }
+    // Les migrations sont exécutées explicitement au déploiement. Ne jamais
+    // modifier le schéma depuis une requête HTTP : l'ancienne implémentation
+    // pouvait détruire les verrous actifs par un DROP TABLE.
 }
 
 // ========================================================================
