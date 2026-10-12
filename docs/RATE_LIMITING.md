@@ -29,7 +29,7 @@ Les 3 durées sont **escaladées** selon `infraction_n` sur 24 h (voir § escala
 
 ## Escalade des durées (LOGIN_DUREE_*_SEC)
 
-Chaque fois qu'un verrou est **posé**, le code regarde l'`infraction_n` maximale pour la même clé (axe + ip + email) créée dans les `LOGIN_ESCALADE_HISTORIQUE_H=24` dernières heures, et ajoute 1. Puis la durée est lue dans une table PHP. Valeurs par défaut dans [config.php](file:///home/dev-chris06/dev/password-manager/config/config.php#L41-L76) :
+Chaque fois qu'un verrou est **posé**, le code regarde l'`infraction_n` maximale pour la même clé (axe + ip + email) créée dans les `LOGIN_ESCALADE_HISTORIQUE_H=24` dernières heures, et ajoute 1. Puis la durée est lue dans une table PHP. Valeurs par défaut dans [config.php](../config/config.php#L41) :
 
 | infraction_n → | 1 | 2 | 3 (et +) |
 |---|---|---|---|
@@ -89,7 +89,7 @@ Les migrations de schéma sont exécutées explicitement au déploiement, jamais
 - Si la table est en V2 → on SELECT toutes les lignes existantes → DROP + CREATE V3 → réinsertion en `axe='PAIR_IP_EMAIL'`, `infraction_n=1`.
 
 ### Migration manuelle (recommandé pour être sûr)
-Le fichier SQL standalone [migrations/003_login_blocages_v3.sql](file:///home/dev-chris06/dev/password-manager/migrations/003_login_blocages_v3.sql) contient la même logique mais dans une procédure stockée éphémère `_migrate_login_blocages_v3()`. À jouer dans phpMyAdmin/Heidi :
+Le fichier SQL standalone [migrations/003_login_blocages_v3.sql](../migrations/003_login_blocages_v3.sql) contient la même logique mais dans une procédure stockée éphémère `_migrate_login_blocages_v3()`. À jouer dans phpMyAdmin/Heidi :
 
 ```sql
 SOURCE migrations/003_login_blocages_v3.sql;
@@ -140,7 +140,7 @@ SET FOREIGN_KEY_CHECKS=1;
 
 ## Tests PHPUnit associés
 
-Fichier [tests/RateLimitTest.php](file:///home/dev-chris06/dev/password-manager/tests/RateLimitTest.php) — (base MySQL `password_manager_test`, créée/ détruite par chaque run de la suite) :
+Fichier [tests/RateLimitTest.php](../tests/RateLimitTest.php) — (base MySQL `password_manager_test`, créée/détruite par chaque exécution de la suite) :
 
 | Nom du test | Vérifie |
 |---|---|

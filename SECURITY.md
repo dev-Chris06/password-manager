@@ -13,9 +13,9 @@ Les issues publiques permettent à n'importe qui d'exploiter la faille avant cor
 
 1. **Email chiffré recommandé** :
    ```
-   security (at) example.com
+   christopherahoglele9@gmail.com
    ```
-   *(Remplace avant publication par ta vraie adresse + clé PGP disponible sur un keyserver public)*
+   *(Une clé PGP permettrait de chiffrer les signalements sensibles ; sans clé, contacte-moi d'abord pour convenir d'un moyen privé.)*
 
 2. **Message direct GitHub** :
    - Ouvre un message privé sur GitHub auprès du propriétaire du dépôt.
@@ -48,9 +48,9 @@ Dans la limite du possible, on **ne divulgue la faille** publiquement qu'après 
 ## 2. Périmètre pris en charge (in scope)
 
 Sont considérés **"en scope"** pour la sécurité :
-- [index.php](file:///home/dev-chris06/dev/password-manager/index.php) + `pages/*.php` + `ajax/*.php`
+- [index.php](index.php) + `pages/*.php` + `ajax/*.php`
 - Code PHP principal : `includes/*.php` + `config/*.php`
-- Schéma SQL : [database.sql](file:///home/dev-chris06/dev/password-manager/database.sql)
+- Schéma SQL : [database.sql](database.sql)
 - Assets JS : `assets/js/*.js` (générateur, dashboard, backup)
 - Extension Chrome MV3 : `extension-chrome/` (manifest, background, content, popup)
 
@@ -65,14 +65,14 @@ Sont considérés **"en scope"** pour la sécurité :
 
 ## 3. Limites connues — ce qu'on considère "acceptable" (ne pas signaler)
 
-Ces points sont **dûment documentés** dans le modèle de menace [docs/MENACE.md](file:///home/dev-chris06/dev/password-manager/docs/MENACE.md). Ce ne sont pas des vulnérabilités à corriger dans ce périmètre :
+Ces points sont **dûment documentés** dans le modèle de menace [docs/MENACE.md](docs/MENACE.md). Ce ne sont pas des vulnérabilités à corriger dans ce périmètre :
 
 | Limite | Documentée ici |
 |---|---|
 | Mot de passe maître faible choisi par l'utilisateur (moins de 60 bits d'entropie, ex. `Azerty123456`) | MENACE §4.1.3 |
 | Keylogger / malware sur le poste client | MENACE §4.1.1 |
 | Attaquant qui contrôle intégralement le serveur (modification fichiers PHP, JS) | MENACE §4.1.2 |
-| Perte simultanée MDP maître + clé de récupération → perte du coffre | MENACE §4.1.5 + §5 |
+| Perte du mot de passe maître → coffre inaccessible | MENACE §4.1.5 + §5 |
 | Métadonnées `site` / `identifiant` en clair (pas chiffrées en base) | MENACE §4.2.1 |
 | Pas de reset par email (choix zéro-connaissance) | MENACE §5 |
 | Phishing sur site tiers qui usurpe le login du coffre | MENACE §4.1.7 |

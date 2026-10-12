@@ -5,8 +5,7 @@
 ### Test 1: Connexion à la base de données ✓
 - Statut: RÉUSSI
 - Résultat: Connexion PDO réussie, toutes les tables créées avec la bonne structure
-- Tables: utilisateurs, entrees, journal_actions, tentatives_login
-- Colonnes TOTP ajoutées: totp_secret, totp_active, totp_pending
+- Tables: utilisateurs, entrees, tentatives_login, tentatives_login_detail, login_blocages, journal_actions
 
 ---
 
@@ -101,27 +100,7 @@
 2. **Attendu**: Liste des actions récentes affichée
 3. **Vérifier**: Les actions (inscription, connexion, ajout, etc.) sont journalisées
 
-### Test 13: Activation TOTP
-1. Cliquer sur "TOTP" dans la navigation
-2. Scanner le QR code avec Google Authenticator
-3. Entrer le code à 6 chiffres
-4. Cliquer sur "Activer TOTP"
-5. **Attendu**: Redirection vers le dashboard, TOTP activé
-
-### Test 14: Connexion avec TOTP activé
-1. Se déconnecter
-2. Se connecter avec identifiants corrects
-3. **Attendu**: Redirection vers la page de vérification TOTP
-4. Entrer le code TOTP
-5. **Attendu**: Connexion réussie vers le dashboard
-
-### Test 15: Désactivation TOTP
-1. Cliquer sur "TOTP" dans la navigation
-2. Entrer le code TOTP actuel
-3. Cliquer sur "Désactiver TOTP"
-4. **Attendu**: Redirection vers le dashboard, TOTP désactivé
-
-### Test 16: Changement mot de passe maître
+### Test 13: Changement mot de passe maître
 1. Cliquer sur "Mot de passe maître" dans la navigation
 2. Entrer l'ancien mot de passe
 3. Entrer le nouveau mot de passe
@@ -129,7 +108,7 @@
 5. **Attendu**: Redirection vers le dashboard
 6. **Vérifier**: Se reconnecter avec le nouveau mot de passe
 
-### Test 17: Vérification headers de sécurité (CSP)
+### Test 14: Vérification headers de sécurité (CSP)
 1. Ouvrir les outils de développement du navigateur (F12)
 2. Aller dans l'onglet "Network"
 3. Recharger une page
@@ -140,7 +119,7 @@
    - X-Content-Type-Options: nosniff
    - Strict-Transport-Security
 
-### Test 18: Extension Chrome - Détection champs
+### Test 15: Extension Chrome - Détection champs
 1. Charger l'extension dans Chrome (chrome://extensions)
 2. Aller sur un site avec formulaire de connexion (ex: facebook.com)
 3. Cliquer sur un champ mot de passe
@@ -166,9 +145,6 @@
 | Test 10: Export | ✓ RÉUSSI | Fonctionne correctement |
 | Test 11: Import | ⏳ À faire | |
 | Test 12: Journal | ⏳ À faire | |
-| Test 13: TOTP activer | ⏳ À faire | |
-| Test 14: TOTP login | ⏳ À faire | |
-| Test 15: TOTP désactiver | ⏳ À faire | |
-| Test 16: Change MDP | ⏳ À faire | |
-| Test 17: Headers | ⏳ À faire | |
-| Test 18: Extension | ⏳ À faire | |
+| Test 13: Change MDP | ⏳ À faire | |
+| Test 14: Headers | ⏳ À faire | |
+| Test 15: Extension | ⏳ À faire | |

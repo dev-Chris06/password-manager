@@ -29,7 +29,8 @@ if ($mdpFourni === '') {
     exit;
 }
 
-$hashMdp = obtenir_hash_mdp_utilisateur($userId);
+try {
+    $hashMdp = obtenir_hash_mdp_utilisateur($userId);
 if ($hashMdp === null || !password_verify($mdpFourni, $hashMdp)) {
     journaliser_action($userId, 'export_echec_mdp', '');
     http_response_code(403);
@@ -37,9 +38,8 @@ if ($hashMdp === null || !password_verify($mdpFourni, $hashMdp)) {
     exit;
 }
 
-$cle = cle_chiffrement_session();
+    $cle = cle_chiffrement_session();
 
-try {
     $stmt = get_pdo()->prepare(
         'SELECT id, categorie, site, identifiant, mdp_chiffre, iv, auth_tag 
          FROM entrees 
@@ -90,7 +90,7 @@ try {
         'iv' => $encrypted['iv'],
         'auth_tag' => $encrypted['auth_tag'],
     ]);
-} catch (Throwable $e) {
+} catch (Throwable) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'message' => 'Erreur lors de l\'export.']);
 }

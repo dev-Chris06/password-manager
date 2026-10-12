@@ -42,9 +42,6 @@ final class AuthIntegrationTest extends TestCase
             email VARCHAR(255) NOT NULL,
             hash_mdp VARCHAR(255) NOT NULL,
             sel_pbkdf2 VARCHAR(128) NOT NULL,
-            totp_secret VARCHAR(255) NULL DEFAULT NULL,
-            totp_active TINYINT(1) NOT NULL DEFAULT 0,
-            last_totp_slot BIGINT UNSIGNED NOT NULL DEFAULT 0,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY uq_utilisateurs_email (email)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
@@ -122,6 +119,13 @@ final class AuthIntegrationTest extends TestCase
         $stmt->execute(['b@exemple.fr', password_hash('x', PASSWORD_BCRYPT, ['cost' => 10]), $selB]);
         $userIdB = (int) self::$pdo->lastInsertId();
 
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        $_SESSION['user_id'] = $userIdA;
+        $_SESSION['email'] = 'a@exemple.fr';
+        $_SESSION['cle_chiffrement'] = encoder_cle_session($cleA);
+
         $eA = chiffrer_mdp_gcm('MDP-DE-A', $cleA);
         $stmt = self::$pdo->prepare('INSERT INTO entrees (user_id, categorie, site, identifiant, mdp_chiffre, iv, auth_tag)
             VALUES (:uid, \'Autre\', :site, :ident, :c, :iv, :tag)');
@@ -134,6 +138,19 @@ final class AuthIntegrationTest extends TestCase
 
         $resultA = dechiffrer_entree_utilisateur($userIdA, $entreeIdA);
         $this->assertSame('MDP-DE-A', $resultA, 'L\'utilisateur A lit sa propre entrée.');
+    }
+
+    public function testRecupererHashMotDePasseUtilisateur(): void
+    {
+        $hash = password_hash('MotDePasseTest123!', PASSWORD_BCRYPT, ['cost' => 10]);
+        $stmt = self::$pdo->prepare(
+            'INSERT INTO utilisateurs (email, hash_mdp, sel_pbkdf2) VALUES (?, ?, ?)'
+        );
+        $stmt->execute(['hash@exemple.fr', $hash, generer_sel_pbkdf2()]);
+        $userId = (int) self::$pdo->lastInsertId();
+
+        $this->assertSame($hash, obtenir_hash_mdp_utilisateur($userId));
+        $this->assertNull(obtenir_hash_mdp_utilisateur(999999));
     }
 
     public function testOwnershipSuppression(): void

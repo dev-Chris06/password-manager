@@ -20,9 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $resultat = connecter_utilisateur($email, $motDePasse);
 
         if ((bool) $resultat['ok']) {
-            if (($resultat['totp_required'] ?? false) === true) {
-                redirect_to('pages/totp_verifier.php');
-            }
             redirect_to('pages/dashboard.php');
         }
 

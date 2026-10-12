@@ -131,9 +131,6 @@ function exiger_authentification(): void
         redirect_to('pages/login.php');
     }
     
-    if (($_SESSION['totp_pending'] ?? false) === true) {
-        redirect_to('pages/totp_verifier.php');
-    }
 }
 
 function id_utilisateur_connecte(): int
@@ -200,7 +197,6 @@ function afficher_debut_page(string $titre, bool $navigation = true): void
                 <a href="<?= e(url_app('pages/ajouter.php')) ?>">Ajouter</a>
                 <a href="<?= e(url_app('pages/backup.php')) ?>">Sauvegarde</a>
                 <a href="<?= e(url_app('pages/journal.php')) ?>">Journal</a>
-                <a href="<?= e(url_app('pages/totp_activer.php')) ?>">TOTP</a>
                 <a href="<?= e(url_app('pages/changer_mdp.php')) ?>">Mot de passe maître</a>
                 <a href="<?= e(url_app('pages/logout.php')) ?>">Déconnexion</a>
             <?php else: ?>
@@ -284,6 +280,19 @@ function trouver_utilisateur_par_email(string $email): ?array
     $user = $stmt->fetch();
 
     return is_array($user) ? $user : null;
+}
+
+function obtenir_hash_mdp_utilisateur(int $userId): ?string
+{
+    $stmt = get_pdo()->prepare('SELECT hash_mdp FROM utilisateurs WHERE id = :id');
+    $stmt->execute(['id' => $userId]);
+    $row = $stmt->fetch();
+
+    if (!is_array($row) || !isset($row['hash_mdp'])) {
+        return null;
+    }
+
+    return (string) $row['hash_mdp'];
 }
 
 /**
@@ -1002,18 +1011,6 @@ function connecter_utilisateur(string $email, string $motDePasse): array
         }
 
         $cle = deriver_cle_chiffrement($motDePasse, (string) $user['sel_pbkdf2']);
-
-        if ((int) $user['totp_active'] === 1) {
-            $_SESSION['totp_pending'] = true;
-            $_SESSION['totp_user_id'] = (int) $user['id'];
-            $_SESSION['totp_email'] = (string) $user['email'];
-            $_SESSION['totp_fail_count'] = 0;
-            $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
-            unset($_SESSION['user_id'], $_SESSION['email']);
-            $emailMasque = substr($email, 0, 3) . '***' . substr(strrchr($email, '@'), 0);
-            journaliser_action((int) $user['id'], 'connexion_mdp_ok_totp_attendu', $emailMasque);
-            return ['ok' => true, 'bloque' => false, 'totp_required' => true, 'message' => 'Mot de passe correct. Vérification TOTP requise.'];
-        }
 
         $_SESSION['cle_chiffrement'] = encoder_cle_session($cle);
         $_SESSION['user_id'] = (int) $user['id'];

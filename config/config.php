@@ -215,13 +215,13 @@ function is_https_request(): bool
 
 function csp_nonce(): string
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        return base64_encode(random_bytes(16));
+    static $nonce = null;
+
+    if (!is_string($nonce)) {
+        $nonce = base64_encode(random_bytes(16));
     }
-    if (empty($_SESSION['_csp_nonce']) || !is_string($_SESSION['_csp_nonce'])) {
-        $_SESSION['_csp_nonce'] = base64_encode(random_bytes(16));
-    }
-    return $_SESSION['_csp_nonce'];
+
+    return $nonce;
 }
 
 function appliquer_headers_securite(): void

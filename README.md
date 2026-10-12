@@ -1,6 +1,6 @@
 # Gestionnaire de mots de passe sécurisé
 
-Application PHP procédurale permettant de gérer un coffre de mots de passe **chiffrés par utilisateur** avec 2FA (TOTP), rate-limiting, journal d'audit et extension Chrome MV3 pour autofill. Conçu comme projet de portfolio orienté bonnes pratiques OWASP.
+Application PHP procédurale permettant de gérer un coffre de mots de passe **chiffrés par utilisateur**, avec rate-limiting, journal d'audit et extension Chrome MV3 pour autofill. Conçu comme projet de portfolio orienté bonnes pratiques OWASP.
 
 ## Vue d'architecture
 
@@ -18,7 +18,7 @@ flowchart LR
 
 ## Prérequis
 
-- PHP 8.2+ (ou 8.1 minimum) avec extensions : `openssl`, `pdo_mysql`, `mbstring`, `gd`, `session`, `json`.
+- PHP 8.2+ (ou 8.1 minimum) avec extensions : `openssl`, `pdo_mysql`, `mbstring`, `session`, `json`.
 - MySQL 8+ ou MariaDB 10.6+.
 - Navigateur moderne (Clipboard API + `crypto.getRandomValues`).
 - Pour extension : Chromium / Chrome / Edge MV3 (version 2023+).
@@ -38,11 +38,10 @@ php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
 ## Usage rapide
 
 1. **Inscription** : email + mot de passe maître ≥ 12 caractères.
-2. **(Optionnel mais recommandé)** Activer l'A2F TOTP dans le menu.
-3. **Dashboard** : ajouter, modifier, supprimer, filtrer par catégorie.
-4. **Copier** : bouton à côté de chaque identifiant / mot de passe → presse-papiers **auto-effacé au bout de 15 secondes**.
-5. **Sauvegardes** : export chiffré du coffre + réimport avec re-demande du MDP maître.
-6. **Extension** : charger le dossier `extension-chrome/` en mode développeur dans `chrome://extensions`.
+2. **Dashboard** : ajouter, modifier, supprimer, filtrer par catégorie.
+3. **Copier** : bouton à côté de chaque identifiant / mot de passe → presse-papiers **auto-effacé au bout de 15 secondes**.
+4. **Sauvegardes** : export chiffré du coffre + réimport avec re-demande du MDP maître.
+5. **Extension** : charger le dossier `extension-chrome/` en mode développeur dans `chrome://extensions`.
 
 ## Sécurité
 
@@ -63,24 +62,23 @@ php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
 - CSRF token 256 bits sur **tous les formulaires POST + endpoints AJAX**.
 - Toutes requêtes via `PDO::prepare` + paramètres liés (0 concat SQL).
 - `WHERE user_id = ?` systématique sur CRUD (pas d'IDOR direct).
-- 2FA TOTP avec fenêtre ±1, **anti-rejeu** (slot time BDD), 3 échecs → invalidation session pending.
 - Rate limiting double (email + IP) : 3 échecs/60 s, 20 échecs IP/1h → blocage 1 h.
 - Timeout sessions : inactivité 5 min + durée max 1 h.
-- Re-demande du **mot de passe maître actuel** avant : export coffre, désactivation TOTP, (changement MDP déjà).
+- Re-demande du **mot de passe maître actuel** avant l'export du coffre et le changement de mot de passe maître.
 - Headers de sécurité révisés CSP nonces + `frame-ancestors 'none'` + `base-uri 'self'` + `form-action 'self'` + retrait `X-XSS-Protection`.
 - Journal d'audit structuré : 502j, rétention configurable (IP, UA, détail sans donnée sensible).
 
 ## Récupération de compte
 
-Il n’existe volontairement **aucune récupération du mot de passe maître** : la perte du mot de passe implique la perte du coffre chiffré. Les codes de récupération fournis par l’application servent uniquement à la seconde étape TOTP.
+Il n’existe volontairement **aucune récupération du mot de passe maître** : la perte du mot de passe implique la perte du coffre chiffré.
 
 
 ## Structure
 
 ```text
 config/              # Paramètres PHP + env loader + PDO
-includes/            # auth, crypto, entrees, totp, qrcode
-pages/               # Vues HTML (login, dashboard, TOTP, backup…)
+includes/            # auth, crypto, entrees
+pages/               # Vues HTML (login, dashboard, backup…)
 ajax/                # Endpoints JSON (déchiffrement, export/import, remplissage, extension)
 assets/css/          # style.css
 assets/js/           # dashboard, generateur, force_mdp, backup
@@ -98,7 +96,7 @@ README.md
 | Document | Lien |
 |---|---|
 | 📋 Modèle de menace (adversaires, garanties, limites, récupération) | [docs/MENACE.md](docs/MENACE.md) |
-| 🧪 Guide de test manuel (18 scénarios) | [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) |
+| 🧪 Guide de test manuel (15 scénarios) | [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) |
 | ⏱️ Rate limiting (logique, seuils, purge) | [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) |
 | 🪪 Extension Chrome / autofill | [extension-chrome/README.md](extension-chrome/README.md) |
 | 🛠️ Installation + FAQ + troubleshooting | [INSTALL.md](INSTALL.md) |
@@ -117,7 +115,6 @@ README.md
 | V2.6.2 Login sécurisé : HttpOnly Secure SameSite | ✅ `demarrer_session_securisee()` |
 | V2.6.3 RÉGÉNÉRATION session id post login | ✅ `session_regenerate_id(true)` |
 | V2.7.1 Logout invalide session côté serveur | ✅ `deconnecter_utilisateur()` + session_destroy |
-| V3.1.1 2FA disponible | ✅ TOTP + anti-rejeu + codes récupération |
 | V4.1.1 `Content-Security-Policy` | ✅ Nonces, `frame-ancestors`, `base-uri`, `form-action` |
 | V4.1.2 `X-Content-Type-Options: nosniff` | ✅ Oui |
 | V4.1.3 `X-Frame-Options: DENY / frame-ancestors none` | ✅ Les deux (compat ancien navigateurs) |
@@ -136,7 +133,6 @@ README.md
 | V10.1.1 Crypto AES-GCM 256 bits | ✅ `aes-256-gcm` |
 | V10.1.2 IV/nonces cryptographiquement aléatoires | ✅ `random_bytes(12)` + par entrée |
 | V10.2.1 KDF itératif PBKDF2 avec >= 100k itérations | ✅ 600k |
-| V13.1.1 Secret TOTP stocké de façon sécurisée | ✅ Chiffré AES-256-GCM avec la clé dérivée du mot de passe maître |
 | V14.4.1 Build/Dockerfile sans secrets hardcodés | ✅ `.env` exclus de Git |
 
 Légende : ✅ conforme · 🟡 partielle / en cours · ⚪ non applicable / hors périmètre N1

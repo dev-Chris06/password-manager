@@ -1,5 +1,16 @@
 const appBaseUrl = window.APP_BASE_URL || '';
 
+async function lireReponseJson(response) {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+        if (response.redirected) {
+            throw new Error('Votre session a peut-être expiré. Reconnectez-vous puis réessayez.');
+        }
+        throw new Error(`Réponse serveur invalide (HTTP ${response.status}). Vérifiez l’URL de l’application.`);
+    }
+    return response.json();
+}
+
 document.getElementById('export-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const btn = document.getElementById('btn-export');
@@ -12,7 +23,7 @@ document.getElementById('export-form').addEventListener('submit', async function
             method: 'POST',
             body: formData
         });
-        const data = await response.json();
+        const data = await lireReponseJson(response);
 
         if (data.ok) {
             const backupData = {
@@ -73,7 +84,7 @@ document.getElementById('import-form').addEventListener('submit', async function
             method: 'POST',
             body: formData
         });
-        const data = await response.json();
+        const data = await lireReponseJson(response);
 
         if (data.ok) {
             resultDiv.className = 'alert alert-success';

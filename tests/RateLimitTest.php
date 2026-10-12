@@ -92,9 +92,6 @@ final class RateLimitTest extends TestCase
             email VARCHAR(255) NOT NULL,
             hash_mdp VARCHAR(255) NOT NULL,
             sel_pbkdf2 VARCHAR(128) NOT NULL,
-            totp_secret VARCHAR(255) NULL DEFAULT NULL,
-            totp_active TINYINT(1) NOT NULL DEFAULT 0,
-            last_totp_slot BIGINT UNSIGNED NOT NULL DEFAULT 0,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY uq_utilisateurs_email (email)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
@@ -332,7 +329,7 @@ final class RateLimitTest extends TestCase
     /**
      * Intégration bout en bout : connecter_utilisateur() avec un compte réel,
      * 3 mauvais mdp → bloque + next appel renvoie le verrou.
-     * (évite TOTP : totp_active=0, mdp conforme 12+ caracters.)
+     * (mot de passe conforme à la longueur minimale de 12 caractères.)
      */
     public function testConnecterUtilisateurBoucleBloquant(): void
     {
@@ -344,8 +341,8 @@ final class RateLimitTest extends TestCase
         $hash = password_hash($bonMdp, PASSWORD_BCRYPT, ['cost' => 10]);
         $sel = 'test_sel_test_sel_test_sel_test_sel_test_sel_test_sel_salt';
 
-        $stmt = self::$pdo->prepare('INSERT INTO utilisateurs (email, hash_mdp, sel_pbkdf2, totp_active)
-            VALUES (?, ?, ?, 0)');
+        $stmt = self::$pdo->prepare('INSERT INTO utilisateurs (email, hash_mdp, sel_pbkdf2)
+            VALUES (?, ?, ?)');
         $stmt->execute([$email, $hash, $sel]);
 
         // 3 mauvais passwords → doit déclencher poser_verrou_pair en interne
@@ -359,6 +356,7 @@ final class RateLimitTest extends TestCase
         $bloque = connecter_utilisateur($email, 'encore-un-mauvais');
         $this->assertFalse($bloque['ok']);
         $this->assertTrue($bloque['bloque'] ?? false, '4e appel DOIT renvoyer bloque=true.');
-        $this->assertGreaterThanOrEqual(55, $bloque['secondes_restantes'] ?? 0);
+        // La temporisation exponentielle du 4e échec peut déjà consommer 15 s.
+        $this->assertGreaterThanOrEqual(40, $bloque['secondes_restantes'] ?? 0);
     }
 }

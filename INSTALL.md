@@ -14,7 +14,6 @@ Deux options sont proposées :
   - `openssl` (chiffrement AES-GCM, PBKDF2, bcrypt natif fonctionne sans)
   - `pdo_mysql` (accès MySQL / MariaDB via PDO)
   - `mbstring` (coupes `mb_substr` sur données utilisateurs Unicode)
-  - `gd` (génération locale du QR code TOTP)
   - `session` (toujours présente, mais vérifier)
   - `json` (toujours présente, vérifier)
 - MySQL ou **MariaDB** 10.6+ (compatibles `FROM_BASE64()` et `TIMESTAMPDIFF`)
@@ -23,7 +22,7 @@ Deux options sont proposées :
 Vérifier ses extensions en ligne de commande :
 
 ```bash
-php -m | grep -E "openssl|pdo_mysql|mbstring|gd|session|json"
+php -m | grep -E "openssl|pdo_mysql|mbstring|session|json"
 ```
 
 Tu dois voir les 5 lignes. Si une manque, active-la dans ton `php.ini`.
@@ -44,14 +43,14 @@ cd password-manager
 Dans phpMyAdmin / Adminer / ou terminal :
 
 ```sql
-CREATE DATABASE IF NOT EXISTS gestionnaire_mdp
+CREATE DATABASE IF NOT EXISTS password_manager
   DEFAULT CHARACTER SET utf8mb4
   DEFAULT COLLATE utf8mb4_unicode_ci;
 
-CREATE USER IF NOT EXISTS 'gestionnaire_mdp'@'127.0.0.1'
+CREATE USER IF NOT EXISTS 'password_manager'@'127.0.0.1'
   IDENTIFIED BY 'met-un-mot-de-passe-long-Ici!';
 
-GRANT ALL PRIVILEGES ON gestionnaire_mdp.* TO 'gestionnaire_mdp'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON password_manager.* TO 'password_manager'@'127.0.0.1';
 FLUSH PRIVILEGES;
 ```
 
@@ -65,7 +64,7 @@ mysql -u password_manager -p password_manager < database.sql
 
 OU dans phpMyAdmin → onglet **Importer** → choisir `database.sql` → Exécuter.
 
-Vérifie que les 4 tables existent : `utilisateurs`, `entrees`, `tentatives_login`, `journal_actions`.
+Vérifie que les 6 tables existent : `utilisateurs`, `entrees`, `tentatives_login`, `tentatives_login_detail`, `login_blocages`, `journal_actions`.
 
 ### Étape A.4 : Configurer `.env`
 
@@ -99,7 +98,7 @@ Ouvre `http://localhost:8000` dans ton navigateur. Tu dois voir la page de login
 ### A.6 Premier test
 
 - Clique **S'inscrire** → créé un compte de test (email valide bidon du style `test@exemple.local`, MDP maître ≥ 12 chars)
-- Tu reçois une redirection → tu peux ajouter des entrées, activer TOTP, etc.
+- Tu reçois une redirection → tu peux ajouter et gérer tes entrées.
 
 ---
 
@@ -184,12 +183,6 @@ Charger `https://ton-site/info.php` → chercher :
 ### Vérif 3 — Ajouter puis supprimer une entrée
 
 - Table `entrees` → tu vois `iv` en base64 16 chars décodé = 12 octets, `auth_tag` non vide → AES-GCM actif.
-
-### Vérif 4 — TOTP
-
-- Dans un tableau de bord → Activer TOTP.
-- Utilise Google Authenticator / 1Password / Authy + entre un code.
-- Redéconnecte, reconnecte → la 2e étape TOTP apparaît. **Refuse 3 codes invalides → session pending détruite.**
 
 ### Vérif 5 — Export d'un coffre
 

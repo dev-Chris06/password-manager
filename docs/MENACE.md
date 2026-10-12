@@ -8,10 +8,9 @@ Document de référence du projet. Objectif : définir **explicitement** contre 
 
 | Actif                                               | Type               | Emplacement                                                                                                        |
 | --------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| Les mots de passe stockés par utilisateur           | Données sensibles  | Colonne `mdp_chiffre` en AES-256-GCM, BDD `gestionnaire_mdp`.`entrees`                                             |
+| Les mots de passe stockés par utilisateur           | Données sensibles  | Colonne `mdp_chiffre` en AES-256-GCM, table `password_manager`.`entrees`                                            |
 | Mot de passe maître (en transit et en court de vie) | Secret utilisateur | Saisi dans un formulaire `<input type="password">`, jamais stocké en clair ni en BDD                               |
 | Clé de chiffrement par utilisateur                  | Dérivée PBKDF2     | En session PHP (`$_SESSION['cle_chiffrement']` base64), **jamais en BDD**                                          |
-| Secret TOTP par utilisateur                         | Secret 2FA         | Colonne `totp_secret` (clair aujourd'hui, prévu d'être chiffré par la suite)                                       |
 | Session utilisateur active                          | État auth          | Cookie `gestionnaire_mdp_session` (HttpOnly / SameSite=Strict)                                                     |
 | Identifiants, sites, catégories                     | Métadonnées        | Colonnes `identifiant`, `site`, `categorie` — stockés EN CLAIR (nécessaires pour l'autofill par requêtes SQL LIKE) |
 
@@ -31,19 +30,18 @@ Document de référence du projet. Objectif : définir **explicitement** contre 
 
 | Garantie                                            | Implémentation                                                                               | Vérifiable par                                                                                                                                                                            |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Hash lent + sel aléatoire par utilisateur**       | bcrypt cost 12 + PBKDF2-SHA256 600k itérations                                  | [config.php](file:///home/dev-chris06/dev/password-manager/config/config.php) + [crypto.php](file:///home/dev-chris06/dev/password-manager/includes/crypto.php#L23-L40)                   |
-| **Chiffrement authentifié AES-256-GCM**             | `openssl_encrypt` mode GCM, IV 12 octets aléatoires par entrée, tag 16 octets séparé         | [crypto.php#L47-L128](file:///home/dev-chris06/dev/password-manager/includes/crypto.php#L47-L128)                                                                                         |
-| **Aucune clé stockée en base**                      | Clé uniquement en session, base64                                                            | [crypto.php#L42-L45](file:///home/dev-chris06/dev/password-manager/includes/crypto.php#L42-L45)                                                                                           |
-| **Sessions sécurisées**                             | HttpOnly + SameSite=Strict + Secure auto en HTTPS + strict_mode + use_only_cookies           | [auth.php#L22-L48](file:///home/dev-chris06/dev/password-manager/includes/auth.php#L22-L48)                                                                                               |
-| **Régénération d'ID post-login**                    | `session_regenerate_id(true)`                                                                | [auth.php#L411](file:///home/dev-chris06/dev/password-manager/includes/auth.php#L411)                                                                                                     |
-| **CSRF synchrone token**                            | 32 octets random_bytes + `hash_equals` vérif timing safe                                     | [auth.php#L83-L102](file:///home/dev-chris06/dev/password-manager/includes/auth.php#L83-L102)                                                                                             |
+| **Hash lent + sel aléatoire par utilisateur**       | bcrypt cost 12 + PBKDF2-SHA256 600k itérations                                  | [config.php](../config/config.php) + [crypto.php](../includes/crypto.php#L23)                   |
+| **Chiffrement authentifié AES-256-GCM**             | `openssl_encrypt` mode GCM, IV 12 octets aléatoires par entrée, tag 16 octets séparé         | [crypto.php](../includes/crypto.php#L47)                                                                                         |
+| **Aucune clé stockée en base**                      | Clé uniquement en session, base64                                                            | [crypto.php](../includes/crypto.php#L42)                                                                                           |
+| **Sessions sécurisées**                             | HttpOnly + SameSite=Strict + Secure auto en HTTPS + strict_mode + use_only_cookies           | [auth.php](../includes/auth.php#L58)                                                                                               |
+| **Régénération d'ID post-login**                    | `session_regenerate_id(true)`                                                                | [auth.php](../includes/auth.php#L1012)                                                                                                     |
+| **CSRF synchrone token**                            | 32 octets random_bytes + `hash_equals` vérif timing safe                                     | [auth.php](../includes/auth.php#L83)                                                                                             |
 | **SQLI impossible en théorie**                      | Toutes requêtes `prepare` + `execute([])` paramétré ; 0 concaténation de user-input dans SQL | Vérifiable par grep : 0 build chaîne SQL à partir de $_POST/$\_GET concaténé                                                                                                              |
-| **Ownership à chaque accès**                        | `WHERE user_id = :user_id` systématiquement sur CRUD                                         | Toutes fonctions `lister_entrees`, `obtenir_entree`, `modifier_entree`, `supprimer_entree` dans [entrees.php](file:///home/dev-chris06/dev/password-manager/includes/entrees.php)         |
-| **Rate limiting double (email + IP)**               | 3 échecs / email = blocage 60 s, 20 échecs / IP sur 1 h = blocage 1 h                        | [auth.php#L244-L347](file:///home/dev-chris06/dev/password-manager/includes/auth.php#L244-L347) + [RATE_LIMITING.md](file:///home/dev-chris06/dev/password-manager/docs/RATE_LIMITING.md) |
-| **2FA TOTP anti-rejeu (en cours d'implémentation)** | dernier slot time accepté stocké en BDD, réutilisation d'un code déjà valide refusée         | Colonnes `utilisateurs.last_totp_slot` + `verifier_code_totp(…, $slotUtilise)`                                                                                                            |
-| **Expiration sessions** (en cours)                  | Inactivité 5 min + durée absolue 1 h max                                                     | `demarrer_session_securisee()` après hardening                                                                                                                                            |
-| **Re-demande MDP maître** (en cours)                | Actions critiques export coffre + désactivation TOTP                                         | `exporter.php` + `totp_desactiver.php`                                                                                                                                                    |
-| **Journalisation structurée**                       | Table `journal_actions` avec action, détail, IP, UA, rétention configurable                  | [auth.php#L502-L540](file:///home/dev-chris06/dev/password-manager/includes/auth.php#L502-L540)                                                                                           |
+| **Ownership à chaque accès**                        | `WHERE user_id = :user_id` systématiquement sur CRUD                                         | Toutes fonctions `lister_entrees`, `obtenir_entree`, `modifier_entree`, `supprimer_entree` dans [entrees.php](../includes/entrees.php)         |
+| **Rate limiting double (email + IP)**               | 3 échecs / email, 20 échecs / IP et seuils globaux configurables                             | [auth.php](../includes/auth.php#L244) + [RATE_LIMITING.md](RATE_LIMITING.md) |
+| **Expiration sessions**                             | Inactivité 5 min + durée absolue 1 h max                                                     | [auth.php](../includes/auth.php#L18) + [config.php](../config/config.php#L25)                                                                                                                                            |
+| **Re-demande MDP maître**                            | Demandé avant l'export et le changement du mot de passe maître                               | [exporter.php](../ajax/exporter.php) + [changer_mdp.php](../pages/changer_mdp.php)                                                                                                                                                                            |
+| **Journalisation structurée**                       | Table `journal_actions` avec action, détail, IP, UA, rétention configurable                  | [auth.php](../includes/auth.php#L502)                                                                                           |
 
 ---
 
@@ -59,7 +57,7 @@ Document de référence du projet. Objectif : définir **explicitement** contre 
 | 2   | **Attaquant qui contrôle INTÉGRALEMENT le serveur** (PHP, fichiers servis, base)                | Peut injecter un JS malveillant sur login.php et lire le MDP maître au clavier, ou altérer `password_verify`. Aucun gestionnaire de mots de passe web protège contre ça (bitwarden self-hosted inclus), sauf desktop/extension offline-only. |
 | 3   | **Mot de passe maître faible choisi par l'utilisateur** (ex. `azerty123456`)                    | Le code impose une **longueur minimale (12)** mais ne peut pas empêcher un MDP très commun. C'est de la responsabilité utilisateur.                                                                                                          |
 | 4   | **Attaque homme-du-milieu réseau SUR UNE CHAÎNE HTTP NON CHIFFRÉE EN CLAIR localhost pour dev** | Attendu en développement ; en production HTTPS c'est obligatoire. Le cookie `Secure` s'active seule en HTTPS.                                                                                                                                |
-| 5   | **Perte SIMULTANÉE du mot de passe maître ET de la clé de récupération**                        | Pas de backdoor, pas de reset par email (pour respecter zéro-connaissance). Perte définitive des entrées.                                                                                                                                    |
+| 5   | **Perte du mot de passe maître**                        | Aucun mécanisme de récupération n'est implémenté ; sans ce mot de passe, le coffre chiffré est inaccessible.                                                                                                                                    |
 | 6   | **Extensions / userscripts Chrome malveillants installés par l'utilisateur lui-même**           | Content scripts non vérifiés par MV3 peuvent lire le DOM et voler ce que tu remplis.                                                                                                                                                         |
 | 7   | **Phishing sur le coffre** (faux `password-manager.evil`)                                       | L'utilisateur peut être induit à saisir son MDP maître sur un site faux ; c'est de la vigilance humaine.                                                                                                                                     |
 
@@ -74,34 +72,9 @@ Document de référence du projet. Objectif : définir **explicitement** contre 
 
 ---
 
-## 5. Stratégie de récupération de compte (PRÉVUE / documentation)
+## 5. Récupération de compte
 
-Pour répondre au problème "oubli fréquent du MDP maître" **SANS casser zéro-connaissance** :
-
-### Principe retenu (documentation — implémentation prévue)
-
-À chaque **inscription** et à chaque **changement du MDP maître**, le code affichera :
-
-1. **Une clé de récupération unique** (format `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX` — 32 caractères aléatoires CSPRNG)
-2. L'utilisateur doit :
-   - l'imprimer OU la copier dans un gestionnaire de mots de passe _autre_
-   - saisir les 4 premiers blocs dans un champ de confirmation (preuve qu'il l'a lue)
-   - une case "J'ai sauvegardé ma clé de récupération" est **obligatoire** pour poursuivre
-
-### Quand elle sert
-
-Oubli du MDP maître → page `reset_par_recovery.php` :
-
-- Saisie de la clé de récupération → vérification (hash bcrypt ou chiffrement-symmetrique)
-- Saisie NOUVEAU MDP maître + confirmation
-- La clé maître est rechiffrée (via un schéma _key wrapping_ AES-GCM dérivé de la recovery key) → toutes les entrées sont rechiffrées avec la nouvelle clé dérivée du nouveau MDP.
-- L'ancienne recovery key est **invalidée** et une NOUVELLE est affichée (1 seule utilisation).
-
-### Ce que n'est PAS prévu
-
-- ❌ Pas de lien "oublié" par email : casserait zéro-connaissance
-- ❌ Pas de questions secrètes seules (facilement social-engineerables) — elles pourront seulement compléter la recovery key, pas la remplacer
-- ❌ Pas de backdoor admin pour reset le coffre d'un utilisateur
+Aucun mécanisme de récupération du mot de passe maître n'est implémenté dans le projet. Il n'existe ni réinitialisation par email, ni clé ou code de récupération, ni réinitialisation par un administrateur. La perte du mot de passe maître rend donc le coffre inaccessible.
 
 ---
 
