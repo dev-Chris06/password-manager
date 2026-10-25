@@ -1,150 +1,66 @@
-# Guide de Test - Gestionnaire de Mots de Passe Sécurisé
+# Guide de test — Gestionnaire de mots de passe
 
-## Tests Automatisés
+Ce guide décrit les vérifications manuelles et automatisées. Aucun résultat n'est présumé réussi : consigne la date, la version de PHP et le résultat après chaque exécution.
 
-### Test 1: Connexion à la base de données ✓
-- Statut: RÉUSSI
-- Résultat: Connexion PDO réussie, toutes les tables créées avec la bonne structure
-- Tables: utilisateurs, entrees, tentatives_login, tentatives_login_detail, login_blocages, journal_actions
+## Environnement
 
----
+- PHP 8.3 minimum, extensions requises indiquées dans [INSTALL.md](../INSTALL.md), et MySQL/MariaDB.
+- Pour les essais navigateur, configure une base locale réservée aux tests et un fichier `.env` correspondant.
+- Dans une base contenant déjà un compte, l'inscription supplémentaire est désactivée par défaut. Pour un essai manuel, utilise une base isolée ou active temporairement `ALLOW_ADDITIONAL_REGISTRATIONS=true` dans `.env`.
+- L'application locale peut être lancée depuis la racine du dépôt avec :
 
-## Tests Manuelles (Navigateur)
+```bash
+php -S localhost:8000 -t public/ public/router.php
+```
 
-### Préparation
-1. S'assurer qu'Apache et MySQL sont démarrés (services natifs)
-2. Accéder à: `http://localhost/password-manager/pages/register.php`
+Ouvre ensuite `http://localhost:8000`.
 
-### Test 2: Inscription d'un nouvel utilisateur
-1. Aller sur `http://localhost/password-manager/pages/register.php`
-2. Remplir le formulaire avec:
-   - Email: `test@example.com`
-   - Mot de passe: `MotDePasseTest123!`
-   - Confirmation: `MotDePasseTest123!`
-3. Cliquer sur "S'inscrire"
-4. **Attendu**: Redirection vers le dashboard avec message de succès
-5. **Vérifier**: L'utilisateur est créé dans la base de données
+## Tests automatisés PHPUnit
 
-### Test 3: Connexion avec mot de passe correct
-1. Aller sur `http://localhost/password-manager/pages/login.php`
-2. Entrer:
-   - Email: `test@example.com`
-   - Mot de passe: `MotDePasseTest123!`
-3. Cliquer sur "Se connecter"
-4. **Attendu**: Redirection vers le dashboard
-5. **Vérifier**: La session est active, l'email est affiché
+La suite se trouve dans `tests/` et comprend `CryptoTest.php`, `AuthIntegrationTest.php` et `RateLimitTest.php`. Elle peut être lancée avec :
 
-### Test 4: Connexion avec mot de passe incorrect
-1. Se déconnecter d'abord
-2. Aller sur `http://localhost/password-manager/pages/login.php`
-3. Entrer:
-   - Email: `test@example.com`
-   - Mot de passe: `MauvaisMotDePasse`
-4. Cliquer sur "Se connecter"
-5. **Attendu**: Message d'erreur "Identifiants invalides"
-6. **Vérifier**: Toujours sur la page de connexion
+```bash
+php vendor/bin/phpunit --testdox
+```
 
-### Test 5: Ajout d'une entrée dans le dashboard
-1. Être connecté
-2. Cliquer sur "Ajouter" dans la navigation
-3. Remplir le formulaire:
-   - Catégorie: "Réseaux sociaux"
-   - Site: `facebook.com`
-   - Identifiant: `testuser`
-   - Mot de passe: `TestPassword123!`
-4. Cliquer sur "Enregistrer"
-5. **Attendu**: Redirection vers le dashboard, entrée affichée
-6. **Vérifier**: L'entrée apparaît dans la liste
+**Attention à la base de test :** les suites d'intégration suppriment, recréent puis suppriment la base MySQL nommée `password_manager_test`. Elles lisent les paramètres de connexion depuis `.env`. Ne lance-les que si cette base est dédiée aux tests et si sa suppression est acceptable.
 
-### Test 6: Modification d'une entrée existante
-1. Sur le dashboard, cliquer sur "Modifier" sur une entrée
-2. Changer le mot de passe: `NouveauMotDePasse456!`
-3. Cliquer sur "Enregistrer"
-4. **Attendu**: Redirection vers le dashboard
-5. **Vérifier**: L'entrée est mise à jour
+## Vérifications manuelles dans le navigateur
 
-### Test 7: Suppression d'une entrée
-1. Sur le dashboard, cliquer sur "Supprimer" sur une entrée
-2. Confirmer la suppression
-3. **Attendu**: Redirection vers le dashboard
-4. **Vérifier**: L'entrée n'apparaît plus
+### Comptes et session
 
-### Test 8: Détection mot de passe faible (jauge)
-1. Aller sur la page "Ajouter"
-2. Dans le champ mot de passe, entrer: `abc`
-3. **Attendu**: Jauge rouge affichée "Très faible"
-4. Entrer: `MotDePasse`
-5. **Attendu**: Jauge orange/jaune affichée "Moyen"
-6. Entrer: `MotDePasseComplexe123!@#`
-7. **Attendu**: Jauge verte affichée "Très fort"
+1. Ouvrir `http://localhost:8000/pages/register.php` sur une base locale isolée.
+2. Créer un compte de test avec un mot de passe maître d'au moins 12 caractères.
+3. Vérifier la redirection vers le tableau de bord et la création du compte.
+4. Se déconnecter, puis se connecter avec le bon mot de passe; vérifier l'accès au tableau de bord.
+5. Recommencer avec un mauvais mot de passe; vérifier que l'accès est refusé et qu'un message générique s'affiche.
+6. Vérifier les protections de session en se reconnectant et en contrôlant le renouvellement de l'identifiant de session.
 
-### Test 9: Détection doublon mot de passe
-1. Ajouter une entrée avec mot de passe: `MotDePasseUnique123!`
-2. Ajouter une autre entrée avec le même mot de passe
-3. **Attendu**: Avertissement "Ce mot de passe est déjà utilisé"
+### Entrées du coffre
 
-### Test 10: Export chiffré des entrées
-1. Cliquer sur "Sauvegarde" dans la navigation
-2. Cliquer sur "Télécharger la sauvegarde"
-3. **Attendu**: Téléchargement d'un fichier JSON chiffré
-4. **Vérifier**: Le fichier contient les métadonnées et le payload chiffré
+7. Ajouter une entrée de test, vérifier qu'elle apparaît, puis la modifier et la supprimer.
+8. Vérifier l'indicateur de robustesse du mot de passe sur quelques valeurs de test.
+9. Ajouter un mot de passe déjà utilisé et vérifier l'avertissement de réutilisation ainsi que la demande de confirmation explicite.
+10. Exporter le coffre après saisie du mot de passe maître actuel; vérifier que le fichier exporté est chiffré.
+11. Importer ce fichier dans un environnement de test et vérifier les entrées réimportées.
+12. Ouvrir le journal d'actions et vérifier qu'il ne contient pas de mot de passe en clair.
+13. Changer le mot de passe maître et vérifier qu'une nouvelle connexion fonctionne et que les entrées restent déchiffrables.
 
-### Test 11: Import chiffré des entrées
-1. Sur la page Sauvegarde, utiliser le fichier exporté
-2. Cliquer sur "Importer"
-3. **Attendu**: Message de succès, entrées importées
-4. **Vérifier**: Les entrées apparaissent dans le dashboard
+### En-têtes HTTP
 
-### Test 12: Affichage du journal d'actions
-1. Cliquer sur "Journal" dans la navigation
-2. **Attendu**: Liste des actions récentes affichée
-3. **Vérifier**: Les actions (inscription, connexion, ajout, etc.) sont journalisées
+14. Dans les outils développeur du navigateur, vérifier sur une page PHP les en-têtes `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` et `Referrer-Policy`. La CSP actuelle autorise `unsafe-inline` pour les styles, mais pas dans `script-src`; vérifier aussi la présence du nonce de script. Vérifier HSTS uniquement via HTTPS, car les navigateurs ignorent cette politique sur HTTP.
 
-### Test 13: Changement mot de passe maître
-1. Cliquer sur "Mot de passe maître" dans la navigation
-2. Entrer l'ancien mot de passe
-3. Entrer le nouveau mot de passe
-4. Cliquer sur "Changer"
-5. **Attendu**: Redirection vers le dashboard
-6. **Vérifier**: Se reconnecter avec le nouveau mot de passe
+### Extension Chrome
 
-### Test 14: Vérification headers de sécurité (CSP)
-1. Ouvrir les outils de développement du navigateur (F12)
-2. Aller dans l'onglet "Network"
-3. Recharger une page
-4. Cliquer sur la requête principale
-5. Vérifier les Response Headers:
-   - Content-Security-Policy ne contient pas 'unsafe-inline'
-   - X-Frame-Options: DENY
-   - X-Content-Type-Options: nosniff
-   - Strict-Transport-Security
+15. Charger `extension-chrome/` en mode développeur, configurer l'URL locale du gestionnaire dans le popup et se connecter dans le même profil. Sur une page de test contenant un formulaire, ouvrir le popup, vérifier la détection du champ, choisir une entrée et confirmer que les champs sont remplis. Tester aussi la suggestion sur un formulaire d'inscription et l'enregistrement dans le coffre. Ces scénarios doivent être vérifiés dans Chrome; ils ne sont pas validés par une suite automatisée du dépôt.
 
-### Test 15: Extension Chrome - Détection champs
-1. Charger l'extension dans Chrome (chrome://extensions)
-2. Aller sur un site avec formulaire de connexion (ex: facebook.com)
-3. Cliquer sur un champ mot de passe
-4. **Attendu**: Bouton orange "MDP" apparaît
-5. Cliquer sur le bouton
-6. **Attendu**: Panneau de suggestion s'affiche
+## Journal des résultats
 
----
+Inscrire les résultats après exécution réelle; laisser « À exécuter » tant qu'aucune vérification n'a été faite.
 
-## Résultats des Tests
-
-| Test | Statut | Notes |
-|------|--------|-------|
-| Test 1: DB Connection | ✓ RÉUSSI | Toutes les tables OK |
-| Test 2: Inscription | ⏳ À faire | |
-| Test 3: Connexion OK | ⏳ À faire | |
-| Test 4: Connexion KO | ⏳ À faire | |
-| Test 5: Ajout entrée | ⏳ À faire | |
-| Test 6: Modification | ⏳ À faire | |
-| Test 7: Suppression | ⏳ À faire | |
-| Test 8: Jauge force | ⏳ À faire | |
-| Test 9: Doublon MDP | ⏳ À faire | |
-| Test 10: Export | ✓ RÉUSSI | Fonctionne correctement |
-| Test 11: Import | ⏳ À faire | |
-| Test 12: Journal | ⏳ À faire | |
-| Test 13: Change MDP | ⏳ À faire | |
-| Test 14: Headers | ⏳ À faire | |
-| Test 15: Extension | ⏳ À faire | |
+| Groupe | Résultat actuel | Date / environnement |
+|---|---|---|
+| PHPUnit | Réussi : 13 tests, 53 assertions | 2026-10-25 · PHP 8.5.12 |
+| Tests manuels 1 à 13 | À exécuter | — |
+| Vérification des en-têtes | À exécuter | — |
+| Extension : remplissage/suggestion | À exécuter dans Chrome | — |

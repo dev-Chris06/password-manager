@@ -1,8 +1,8 @@
-# Rate limiting de connexion — Défaut 3 (2 axes historiques + escalade)
+# Limitation des tentatives de connexion et d'inscription
 
 ## Vue d'ensemble (septembre 2026 — Défaut 3)
 
-Le rate-listing utilise **deux couches** :
+La limitation de connexion utilise **deux couches** :
 
 | Couche | Objectif | Délai restant |
 |---|---|---|
@@ -23,7 +23,11 @@ La même table stocke 3 types de verrous, discriminés par la colonne `axe` :
 | `GLOBAL_IP` | `<ip, email=''>` (email vide) | ≥ 20 échecs `<ip>` confondus dans 1 h | **Brute-force horizontal** : une IP attaque N comptes différents → tous les comptes sur cette IP sont bloqués. |
 | `GLOBAL_EMAIL` | `<ip='', email>` (ip vide) | ≥ 10 échecs `<email>` confondus dans 1 h | **Ciblage d'un compte** depuis plusieurs IP (botnet). |
 
-Les 3 durées sont **escaladées** selon `infraction_n` sur 24 h (voir § escalade).
+Les durées des trois axes de connexion sont **escaladées** selon `infraction_n` sur 24 h (voir § escalade). L'inscription possède un quatrième axe distinct, `GLOBAL_IP_INSCRIPTION`, décrit ci-dessous.
+
+## Limitation des inscriptions
+
+Le code limite aussi les soumissions d'inscription par IP, qu'elles aboutissent ou non. Les valeurs par défaut dans `config/config.php` sont de 5 tentatives par heure, puis des blocages de 5 minutes, 1 heure et 24 heures selon l'escalade sur 48 heures. Cet axe utilise `GLOBAL_IP_INSCRIPTION` dans `login_blocages.axe` et a été ajouté par `migrations/004_add_global_ip_inscription.sql`. Une base créée avec le `database.sql` actuel contient déjà cette valeur; une base plus ancienne doit recevoir la migration.
 
 ---
 
@@ -49,7 +53,8 @@ Chaque fois qu'un verrou est **posé**, le code regarde l'`infraction_n` maximal
 ```
 connecter_utilisateur(email, mdp)
 │
-├─ migrations/003_login_blocages_v3.sql          ← migration explicite au déploiement
+├─ migrations/003_login_blocages_v3.sql          ← mise à niveau d'une ancienne table de verrous
+├─ migrations/004_add_global_ip_inscription.sql   ← mise à niveau de l'ENUM pour le verrou d'inscription
 │
 ├─ fusionner_statuts_verrous(ip, email)         ← 1 appel = 3 axes lus
 │  ├─ statut_verrou_pair(email, ip)             → axe PAIR
@@ -81,20 +86,16 @@ Points clés d'architecture :
 
 ---
 
-## Migration V2 → V3 (idempotente)
+## Mise à niveau du schéma des verrous
 
-### Auto-migration à la volée (sans intervention)
-Les migrations de schéma sont exécutées explicitement au déploiement, jamais depuis `connecter_utilisateur()` :
-- Si `login_blocages` contient déjà la colonne `axe` (V3) → **no-op** (coût : 1 `SHOW COLUMNS` mis en cache par le `static $fait`).
-- Si la table est en V2 → on SELECT toutes les lignes existantes → DROP + CREATE V3 → réinsertion en `axe='PAIR_IP_EMAIL'`, `infraction_n=1`.
-
-### Migration manuelle (recommandé pour être sûr)
-Le fichier SQL standalone [migrations/003_login_blocages_v3.sql](../migrations/003_login_blocages_v3.sql) contient la même logique mais dans une procédure stockée éphémère `_migrate_login_blocages_v3()`. À jouer dans phpMyAdmin/Heidi :
+### Migrations explicites
+Les migrations de schéma sont appliquées explicitement, jamais depuis une requête HTTP. `migrer_login_blocages_si_besoin()` est volontairement sans effet et ne met pas le schéma à jour. Pour une ancienne base, sauvegarde-la et applique les scripts dans l'ordre avec un client MySQL/MariaDB qui accepte les procédures stockées et `DELIMITER` :
 
 ```sql
 SOURCE migrations/003_login_blocages_v3.sql;
+SOURCE migrations/004_add_global_ip_inscription.sql;
 ```
-Rejouable sans effet de bord, et ne casse jamais les lignes existantes.
+`SOURCE` est une commande du client MySQL en ligne de commande, pas d'un formulaire SQL phpMyAdmin. Les scripts sont conçus pour être rejouables; effectue une sauvegarde avant de modifier une base existante.
 
 ---
 
@@ -121,7 +122,9 @@ WHERE axe='PAIR_IP_EMAIL' AND ip='10.0.0.1' AND email='bob@exemple.fr';
 ```
 Puis re-déclencher 3 échecs sur cette paire : `infraction_n` doit passer à **2** et la durée à **300 s** (5 min).
 
-### Vider rapidement tout pour reprendre un test clean
+### Vider les données de limitation pour reprendre un test propre
+
+À exécuter uniquement sur une base locale de développement/test : ces commandes suppriment les historiques de tentatives, les blocages et les lignes de journal.
 ```sql
 SET FOREIGN_KEY_CHECKS=0;
 TRUNCATE tentatives_login;
@@ -132,9 +135,7 @@ SET FOREIGN_KEY_CHECKS=1;
 ```
 
 ### Vérifier qu'une IP globale bloque un nouveau compte
-1. Générer 4 échecs depuis `10.0.0.99` sur 4 emails distincts (le test utilise un seuil réduit LOGIN_SEUIL_IP_MAX_1H=4).
-2. Poser le verrou : `CALL poser_verrou_ip('10.0.0.99')` ou en PHP.
-3. Une 5e tentative sur un email **jamais** vu : `fusionner_statuts_verrous('10.0.0.99', 'toto@exemple.fr')['bloque']` doit être **true**, et la durée celle de GLOBAL_IP (5 min au niveau 1).
+Ce scénario est couvert par `testVerrouGlobalIpBloqueTousLesComptes` dans `tests/RateLimitTest.php`, qui configure un seuil de test à 4 et appelle les fonctions PHP. Le projet ne crée pas de procédure stockée `poser_verrou_ip`; le `CALL` parfois montré dans d'anciens exemples n'est pas utilisable. En usage normal, le seuil par défaut est 20 échecs par IP et par heure.
 
 ---
 
@@ -156,7 +157,7 @@ Pour lancer les tests :
 ```bash
 php vendor/bin/phpunit tests/RateLimitTest.php tests/AuthIntegrationTest.php --testdox
 ```
-(Prérequis : l'utilisateur MySQL en `config/.env` doit avoir le droit de `CREATE/DROP DATABASE password_manager_test`.)
+(Attention : les tests suppriment puis recréent explicitement la base `password_manager_test` et la suppriment à la fin. Ils lisent les paramètres MySQL du fichier `.env` à la racine. Ne les lance que si cette base est réservée aux tests et peut être détruite.)
 
 ---
 

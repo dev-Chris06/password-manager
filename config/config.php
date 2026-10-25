@@ -11,6 +11,13 @@ load_env(BASE_PATH . '/.env');
 if (!defined('APP_URL')) {
     define('APP_URL', rtrim((string) env_value('APP_URL', 'http://localhost/password-manager'), '/'));
 }
+if (!defined('ALLOW_ADDITIONAL_REGISTRATIONS')) {
+    $allowAdditionalRegistrations = filter_var(
+        env_value('ALLOW_ADDITIONAL_REGISTRATIONS', 'false'),
+        FILTER_VALIDATE_BOOLEAN
+    );
+    define('ALLOW_ADDITIONAL_REGISTRATIONS', $allowAdditionalRegistrations);
+}
 if (!defined('BCRYPT_COST')) {
     define('BCRYPT_COST', 12);
 }

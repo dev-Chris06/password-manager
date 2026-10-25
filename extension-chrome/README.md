@@ -1,85 +1,40 @@
 # Extension Chrome - Gestionnaire MDP
 
-Cette extension Manifest V3 permet de remplir automatiquement un formulaire de connexion avec les entrées du gestionnaire PHP local.
+Cette extension Manifest V3 est prévue pour utiliser le gestionnaire PHP local. Le manifeste autorise les connexions HTTP vers `localhost` et `127.0.0.1`. Elle utilise `activeTab`, `scripting` et `storage`; elle ne demande pas la permission Chrome `cookies`.
 
 ## Installation en mode développeur
 
-1. Ouvrir Chrome.
-2. Aller sur `chrome://extensions`.
-3. Activer le mode développeur.
-4. Cliquer sur `Charger l'extension non empaquetée`.
-5. Sélectionner le dossier `extension-chrome`.
-6. Se connecter au gestionnaire dans le même navigateur : `http://localhost/password-manager/pages/login.php`.
-7. Ouvrir une page qui contient un formulaire de connexion.
-8. Cliquer sur l'icône de l'extension, choisir un compte, puis valider.
+1. Ouvrir Chrome ou un navigateur Chromium compatible.
+2. Aller sur `chrome://extensions` et activer le mode développeur.
+3. Cliquer sur `Charger l'extension non empaquetée` et sélectionner `extension-chrome/`.
+4. Lancer l'application PHP en suivant [le guide d'installation](../INSTALL.md).
+5. Dans le popup de l'extension, configurer l'URL locale réelle de l'application. La valeur initiale est `http://localhost/password-manager`; avec le serveur PHP intégré configuré dans `INSTALL.md`, l'URL est `http://localhost:8000`.
+6. Se connecter au gestionnaire dans le même profil de navigateur.
 
-## Fonctionnement
+## Fonctionnement prévu et état actuel
 
-- Le popup lit le domaine de l'onglet actif.
-- Il appelle `http://localhost/password-manager/ajax/remplissage.php?domaine=...` avec `credentials: "include"`.
-- Le cookie PHP `gestionnaire_mdp_session` reste HttpOnly.
-- L'endpoint retourne seulement les métadonnées des entrées et le token CSRF courant.
-- Au clic sur une entrée, le popup appelle `ajax/dechiffrer.php` avec `entry_id` et `csrf_token`.
-- Le mot de passe déchiffré est envoyé directement au content script pour remplir le champ.
+- Le popup lit l'hôte de l'onglet actif et demande à `ajax/remplissage.php` les métadonnées des entrées correspondantes.
+- Les hôtes sont comparés après suppression du préfixe `www.`. Les sous-domaines doivent être enregistrés séparément.
+- Le popup demande le déchiffrement à `ajax/dechiffrer.php` et transmet le mot de passe au script de contenu pour remplir le formulaire.
+- La session PHP est envoyée avec `credentials: "include"`; son cookie reste HttpOnly. L'extension ne lit pas directement le cookie.
+- Le manifeste ne déclare aucun `content_script` statique. À l'ouverture du popup, celui-ci vérifie si le script répond déjà; si nécessaire, il l'injecte dans l'onglet actif avec `chrome.scripting.executeScript`. L'injection est déclenchée par l'ouverture du popup, donc par une action de l'utilisateur, et évite de charger le script deux fois dans le même onglet.
 
-## Suggestion pendant la création d'un compte
+## Suggestion lors de la création d'un compte
 
-- Clique dans un champ `mot de passe` sur une page d'inscription.
-- Une carte apparaît près du champ avec :
-  - un mot de passe fort généré localement ;
-  - un champ identifiant prérempli si l'extension trouve l'e-mail ou le téléphone ;
-  - un bouton `Utiliser + enregistrer`.
-- Tu peux modifier le mot de passe proposé avant de l'utiliser.
-- Quand tu cliques sur `Utiliser + enregistrer`, l'extension :
-  1. remplit les champs du site ;
-  2. récupère le token CSRF courant via `ajax/remplissage.php` ;
-  3. envoie l'entrée à `ajax/enregistrer_extension.php` ;
-  4. le serveur chiffre le mot de passe et l'ajoute au dashboard.
+Le script de contenu comprend une interface de suggestion : génération locale d'un mot de passe, remplissage de champs et enregistrement dans le coffre via `ajax/enregistrer_extension.php`. Après activation de l'extension depuis son popup, la suggestion peut apparaître lorsqu'un champ de mot de passe est sélectionné.
 
-## Contraintes respectées
+## Sécurité et données locales
 
-- Aucun JWT.
-- Aucune clé de chiffrement dans l'extension.
-- Aucun mot de passe déchiffré dans `chrome.storage`.
-- Pas de log console contenant un secret.
-- La cryptographie reste entièrement côté serveur PHP.
+- Aucun JWT ni clé de chiffrement n'est stocké dans l'extension.
+- L'URL du gestionnaire est conservée dans `chrome.storage.local`; aucun secret n'y est enregistré.
+- Le mot de passe est déchiffré côté serveur puis transmis au script de contenu pour le remplissage.
+- La configuration de base n'autorise que `http://localhost/*` et `http://127.0.0.1/*` comme hôtes de l'application. L'URL doit donc utiliser l'un de ces hôtes et le schéma HTTP tant que les autorisations HTTPS ne sont pas ajoutées au manifeste.
 
-## Configuration de l'URL locale
+## Permissions déclarées
 
-L'URL par défaut est :
+- `activeTab` : accès temporaire à l'onglet actif après interaction avec l'extension.
+- `scripting` : injection du script de contenu à la demande.
+- `storage` : sauvegarde de l'URL locale choisie.
+- `host_permissions` : accès aux endpoints du gestionnaire sur `localhost` et `127.0.0.1` en HTTP.
 
-```text
-http://localhost/password-manager
-```
-
-Elle peut être modifiée dans le champ du popup. La valeur est stockée dans `chrome.storage.local`, mais elle ne contient aucun secret.
-
-## Remarque session
-
-L'extension dépend de la session PHP active. Si le popup affiche `Session expirée`, reconnecte-toi d'abord au gestionnaire dans le même profil Chrome.
-
-## Permissions requises
-
-L'extension demande les permissions suivantes dans `manifest.json` :
-
-- **`activeTab`** : Permet à l'extension de lire l'URL de l'onglet actif pour détecter le domaine courant et proposer les entrées correspondantes.
-- **`storage`** : Permet de stocker localement l'URL du gestionnaire (configurable par l'utilisateur) dans `chrome.storage.local`. Aucun secret n'est stocké.
-- **`cookies`** : Permet d'envoyer les cookies avec les requêtes vers le gestionnaire local pour maintenir la session PHP authentifiée.
-
-### `host_permissions`
-
-L'extension est limitée aux hôtes suivants pour des raisons de sécurité :
-
-- `http://localhost/*`
-- `http://127.0.0.1/*`
-
-Ces permissions restreignent l'extension à ne communiquer qu'avec le gestionnaire local, empêchant tout appel vers des serveurs externes.
-
-### Content scripts
-
-Le script `content.js` est injecté sur tous les sites (`http://*/*` et `https://*/*`) pour :
-- Détecter les champs de mot de passe
-- Afficher le bouton de suggestion lors de la création de compte
-- Remplir automatiquement les identifiants
-
-Toute la logique de chiffrement/déchiffrement reste côté serveur PHP.
+Les scripts de contenu ne sont pas configurés pour s'injecter automatiquement sur tous les sites dans `manifest.json`.

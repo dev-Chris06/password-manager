@@ -9,7 +9,7 @@ Deux options sont proposées :
 
 ## Prérequis système
 
-- PHP **8.2 ou supérieur** (testé sur PHP 8.3, fonctionne sur 8.1 avec `password_hash` bcrypt)
+- PHP **8.3 ou supérieur** (PHP 8.3 est la version minimale déclarée par le projet)
 - Extensions PHP **OBLIGATOIRES** :
   - `openssl` (chiffrement AES-GCM, PBKDF2, bcrypt natif fonctionne sans)
   - `pdo_mysql` (accès MySQL / MariaDB via PDO)
@@ -66,6 +66,8 @@ OU dans phpMyAdmin → onglet **Importer** → choisir `database.sql` → Exécu
 
 Vérifie que les 6 tables existent : `utilisateurs`, `entrees`, `tentatives_login`, `tentatives_login_detail`, `login_blocages`, `journal_actions`.
 
+Le fichier actuel `database.sql` contient le schéma attendu par la version présente du code. Pour mettre à niveau une base existante créée avec un ancien schéma, sauvegarde-la puis applique, dans l'ordre, `migrations/003_login_blocages_v3.sql` et `migrations/004_add_global_ip_inscription.sql`. Ces scripts utilisent des procédures et des délimiteurs SQL : lance-les avec un client MySQL/MariaDB compatible. `SOURCE` fonctionne dans le client MySQL en ligne de commande, pas dans le formulaire SQL de phpMyAdmin.
+
 ### Étape A.4 : Configurer `.env`
 
 ```bash
@@ -81,14 +83,17 @@ DB_NAME=password_manager
 DB_USER=password_manager
 DB_PASS=met-un-mot-de-passe-long-Ici!
 APP_URL=http://localhost:8000
+ALLOW_ADDITIONAL_REGISTRATIONS=false
 ```
+
+L'inscription du premier compte est ouverte tant que la base ne contient aucun utilisateur. Dès qu'un compte existe, les nouvelles inscriptions sont fermées par défaut. Pour les rouvrir temporairement, définis `ALLOW_ADDITIONAL_REGISTRATIONS=true` dans `.env`, puis remets `false` après usage et redémarre PHP.
 
 ### Étape A.5 : Lancer le serveur dev (sans Apache/Nginx !)
 
 C'est un serveur PHP intégré léger, parfait pour tester :
 
 ```bash
-# (Si tu as déjà fait le hardening avec public/)
+# Depuis la racine du dépôt
 php -S localhost:8000 -t public/ public/router.php
 
 ```
@@ -97,7 +102,7 @@ Ouvre `http://localhost:8000` dans ton navigateur. Tu dois voir la page de login
 
 ### A.6 Premier test
 
-- Clique **S'inscrire** → créé un compte de test (email valide bidon du style `test@exemple.local`, MDP maître ≥ 12 chars)
+- Clique **S'inscrire** → crée le compte unique (email valide de ton choix, MDP maître ≥ 12 caractères)
 - Tu reçois une redirection → tu peux ajouter et gérer tes entrées.
 
 ---
@@ -130,7 +135,7 @@ La **racine web** de ton hébergeur est typiquement :
 - Infomaniak : `~/web`
 - OVH : `~/www`
 
-**Si structure `public/` est appliquée** (après hardening) :
+**La structure `public/` est utilisée par le projet actuel** :
 
 - Uploade **tout le repo** dans un dossier de travail (ex. `~/password-manager-src`)
 - Pointeur la racine web de l'hébergeur vers `~/password-manager-src/public` (demande au support d'ajouter un alias dans "Domaines > Chemin racine", ou utilise un `.htaccess` en sous-arbo).
@@ -184,7 +189,7 @@ Charger `https://ton-site/info.php` → chercher :
 
 - Table `entrees` → tu vois `iv` en base64 16 chars décodé = 12 octets, `auth_tag` non vide → AES-GCM actif.
 
-### Vérif 5 — Export d'un coffre
+### Vérif 4 — Export d'un coffre
 
 - Onglet sauvegarde → exporter → **le code te re-demande le mot de passe actuel.** Télécharge le JSON.
 - Teste import → tu retrouves les entrées.
@@ -209,7 +214,7 @@ git pull origin main        # ou feature/hardening-2026 pendant les travaux
 | Mot de passe hashé invalide / connexion impossible malgré bons identifiants         | Version PHP différente en CLI et Apache, ou `password_hash` + bcrypt avec un coût > 12 sur machine trop lente | Garde `BCRYPT_COST = 12` (par défaut). Vérifie phpinfo() dans Apache et `php -v` en CLI.                                                       |
 | `failed to open stream: No such file or directory` en ligne 4-5 d'un fichier pages/ | Chemin `require_once __DIR__ . '/../includes/...` cassé si tu déplaces des fichiers                           | Applique les nouveaux chemins systématiquement.                                                                                                |
 | L'extension MV3 ne voit pas la session                                              | Tu es en HTTP + navigateur refuse cookies SameSite=Strict en 3rd-party                                        | Passe HTTPS, ou localhost (127.0.0.1 est traité comme sécurisé par Chrome même en http://).                                                    |
-| Extension refuse de charger `content.js`                                            | Manifest V3 : chemin relatif respecte `manifest.json` lignes `matches` / `js`                                 | Vérifie console Erreur sur `chrome://extensions` → mode développeur → Détails → Voir les erreurs.                                              |
+| Le popup de l'extension ne détecte pas les champs                                    | L'onglet est une page protégée du navigateur, l'injection n'a pas abouti ou l'extension doit être rechargée   | Recharge la page et l'extension, vérifie les erreurs dans `chrome://extensions`, puis réessaie sur une page HTTP(S) ordinaire.                  |
 
 ---
 

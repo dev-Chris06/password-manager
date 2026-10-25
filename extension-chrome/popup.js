@@ -236,16 +236,30 @@ async function init() {
   elements.domain.textContent = currentDomain;
 
   try {
-    const detection = await sendTabMessage(activeTab.id, {
-      source: MESSAGE_SOURCE,
-      type: "DETECT_FIELDS",
-    });
+    let detection;
+    try {
+      detection = await sendTabMessage(activeTab.id, {
+        source: MESSAGE_SOURCE,
+        type: "DETECT_FIELDS",
+      });
+    } catch {
+      await chrome.scripting.executeScript({
+        target: { tabId: activeTab.id },
+        files: ["content.js"],
+      });
+      detection = await sendTabMessage(activeTab.id, {
+        source: MESSAGE_SOURCE,
+        type: "DETECT_FIELDS",
+      });
+    }
 
     elements.fieldStatus.textContent = detection?.hasPasswordField
       ? "Champ trouvé"
       : "Pas de mot de passe";
-  } catch {
-    elements.fieldStatus.textContent = "Recharge la page";
+  } catch (error) {
+    elements.fieldStatus.textContent = "Non compatible";
+    setStatus(error.message || "Impossible d'activer le remplissage sur cette page.", true);
+    return;
   }
 
   try {

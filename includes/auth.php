@@ -249,11 +249,29 @@ function inscrire_utilisateur(string $email, string $motDePasse): bool
         return false;
     }
 
-    $sel = generer_sel_pbkdf2();
-    $hash = hash_mot_de_passe_maitre($motDePasse);
     $pdo = get_pdo();
+    $databaseName = (string) env_value('DB_NAME', 'password_manager');
+    $lockName = 'pm_register_' . substr(hash('sha256', $databaseName), 0, 32);
+    $lockAcquired = false;
 
     try {
+        if (!ALLOW_ADDITIONAL_REGISTRATIONS) {
+            $lockStmt = $pdo->prepare('SELECT GET_LOCK(:lock_name, 5)');
+            $lockStmt->execute(['lock_name' => $lockName]);
+            $lockAcquired = (int) $lockStmt->fetchColumn() === 1;
+
+            if (!$lockAcquired) {
+                return false;
+            }
+
+            $count = (int) $pdo->query('SELECT COUNT(*) FROM utilisateurs')->fetchColumn();
+            if ($count > 0) {
+                return false;
+            }
+        }
+
+        $sel = generer_sel_pbkdf2();
+        $hash = hash_mot_de_passe_maitre($motDePasse);
         $stmt = $pdo->prepare(
             'INSERT INTO utilisateurs (email, hash_mdp, sel_pbkdf2) VALUES (:email, :hash_mdp, :sel_pbkdf2)'
         );
@@ -268,7 +286,28 @@ function inscrire_utilisateur(string $email, string $motDePasse): bool
             journaliser_action($userId, 'inscription', $emailMasque);
         }
         return $result;
-    } catch (PDOException) {
+    } catch (Throwable) {
+        return false;
+    } finally {
+        if ($lockAcquired) {
+            try {
+                $releaseStmt = $pdo->prepare('SELECT RELEASE_LOCK(:lock_name)');
+                $releaseStmt->execute(['lock_name' => $lockName]);
+            } catch (Throwable) {
+            }
+        }
+    }
+}
+
+function inscription_autorisee(): bool
+{
+    if (ALLOW_ADDITIONAL_REGISTRATIONS) {
+        return true;
+    }
+
+    try {
+        return (int) get_pdo()->query('SELECT COUNT(*) FROM utilisateurs')->fetchColumn() === 0;
+    } catch (Throwable) {
         return false;
     }
 }
@@ -549,15 +588,18 @@ function prochain_niveau_infraction_inscription(string $ip): int
 // Comptage des tentatives d'inscription (fenêtre glissante, IP seule)
 // ========================================================================
 
-function enregistrer_tentative_inscription(string $ip): void
+function enregistrer_tentative_inscription(string $ip, bool $succes = false): void
 {
     try {
         $pdo = get_pdo();
         $stmt = $pdo->prepare(
             "INSERT INTO tentatives_login_detail (ip, email, tentative_at, succes)
-             VALUES (:ip, '', NOW(), 0)"
+             VALUES (:ip, '', NOW(), :succes)"
         );
-        $stmt->execute(['ip' => substr($ip, 0, 45)]);
+        $stmt->execute([
+            'ip' => substr($ip, 0, 45),
+            'succes' => $succes ? 1 : 0,
+        ]);
     } catch (Throwable) {
     }
 }
@@ -575,7 +617,7 @@ function compter_tentatives_inscription_dans_fenetre(string $ip): int
             : 60;
         $stmt = $pdo->prepare(
             "SELECT COUNT(*) FROM tentatives_login_detail
-             WHERE ip = :ip AND email = '' AND succes = 0
+             WHERE ip = :ip AND email = ''
                AND tentative_at > DATE_SUB(NOW(), INTERVAL {$minutes} MINUTE)"
         );
         $stmt->execute(['ip' => substr($ip, 0, 45)]);

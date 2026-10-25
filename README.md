@@ -1,6 +1,6 @@
 # Gestionnaire de mots de passe sécurisé
 
-Application PHP procédurale permettant de gérer un coffre de mots de passe **chiffrés par utilisateur**, avec rate-limiting, journal d'audit et extension Chrome MV3 pour autofill. Conçu comme projet de portfolio orienté bonnes pratiques OWASP.
+Application PHP procédurale permettant de gérer un coffre de mots de passe **chiffrés par utilisateur**, avec limitation des tentatives, journal d'audit et extension Chrome MV3 pour le remplissage automatique à la demande. Voir [son guide](extension-chrome/README.md). Conçu comme projet de portfolio orienté bonnes pratiques OWASP.
 
 ## Vue d'architecture
 
@@ -18,7 +18,7 @@ flowchart LR
 
 ## Prérequis
 
-- PHP 8.2+ (ou 8.1 minimum) avec extensions : `openssl`, `pdo_mysql`, `mbstring`, `session`, `json`.
+- PHP 8.3 minimum avec extensions : `openssl`, `pdo_mysql`, `mbstring`, `session`, `json`.
 - MySQL 8+ ou MariaDB 10.6+.
 - Navigateur moderne (Clipboard API + `crypto.getRandomValues`).
 - Pour extension : Chromium / Chrome / Edge MV3 (version 2023+).
@@ -32,7 +32,7 @@ Pour un test ultra rapide :
 ```bash
 cp .env.example .env              # édite DB_USER/DB_PASS/DB_NAME après
 mysql -u root -p < database.sql   # crée la base (adapter user si besoin)
-php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
+php -S localhost:8000 -t public/ public/router.php  # ouvre http://localhost:8000
 ```
 
 ## Usage rapide
@@ -41,7 +41,7 @@ php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
 2. **Dashboard** : ajouter, modifier, supprimer, filtrer par catégorie.
 3. **Copier** : bouton à côté de chaque identifiant / mot de passe → presse-papiers **auto-effacé au bout de 15 secondes**.
 4. **Sauvegardes** : export chiffré du coffre + réimport avec re-demande du MDP maître.
-5. **Extension** : charger le dossier `extension-chrome/` en mode développeur dans `chrome://extensions`.
+5. **Extension** : charger `extension-chrome/` dans `chrome://extensions`, puis ouvrir son popup sur une page avec formulaire pour activer le remplissage à la demande.
 
 ## Sécurité
 
@@ -62,11 +62,11 @@ php -S localhost:8000             # ouvre http://localhost:8000 dans Chrome
 - CSRF token 256 bits sur **tous les formulaires POST + endpoints AJAX**.
 - Toutes requêtes via `PDO::prepare` + paramètres liés (0 concat SQL).
 - `WHERE user_id = ?` systématique sur CRUD (pas d'IDOR direct).
-- Rate limiting double (email + IP) : 3 échecs/60 s, 20 échecs IP/1h → blocage 1 h.
+- Limitation des tentatives de connexion sur trois axes (paire IP/courriel, IP globale et courriel global), avec durées de blocage progressives. Un axe distinct limite aussi les créations répétées de comptes par IP.
 - Timeout sessions : inactivité 5 min + durée max 1 h.
 - Re-demande du **mot de passe maître actuel** avant l'export du coffre et le changement de mot de passe maître.
 - Headers de sécurité révisés CSP nonces + `frame-ancestors 'none'` + `base-uri 'self'` + `form-action 'self'` + retrait `X-XSS-Protection`.
-- Journal d'audit structuré : 502j, rétention configurable (IP, UA, détail sans donnée sensible).
+- Journal d'audit structuré : purge des lignes de plus de 90 jours (`JOURNAL_RETENTION_DAYS`) lors des connexions, avec IP, agent utilisateur et détail d'action.
 
 ## Récupération de compte
 
@@ -82,6 +82,9 @@ pages/               # Vues HTML (login, dashboard, backup…)
 ajax/                # Endpoints JSON (déchiffrement, export/import, remplissage, extension)
 assets/css/          # style.css
 assets/js/           # dashboard, generateur, force_mdp, backup
+public/              # racine web et routeur du serveur PHP intégré
+  router.php
+  .htaccess
 docs/                # MENACE, TEST_GUIDE, RATE_LIMITING
 extension-chrome/    # Manifest V3 + content/popup/background
 index.php            # Point d'entrée + redirect login/dashboard
@@ -107,10 +110,10 @@ README.md
 | Critère OWASP ASVS 4.0.3 N1 | Statut |
 |---|---|
 | V1.1.1 Framework sécuritaire + patches à jour | ✅ Procédural sans framework, briques PHP récentes |
-| V1.2.1 Fichiers sensibles (.env, backups) hors docroot | 🟡 Avec structure `public/` (hardening P1.3) |
+| V1.2.1 Fichiers sensibles (.env, backups) hors docroot | 🟡 Le dépôt fournit `public/`; le serveur doit effectivement utiliser ce dossier comme DocumentRoot. |
 | V2.1.1 Longueur minimale MDP (>= 12) | ✅ `mot_de_passe_valide()` + HTML minlength |
 | V2.1.4 Mot de passe interdit (dictionnaire rockyou) | ⚪ Non implémenté (recommandé pour ASVS N2) |
-| V2.2.1 bcrypt/Argon2id avec cost élevé | ✅ bcrypt cost 12 (Argon2id prévu PHP 8.4+) |
+| V2.2.1 bcrypt/Argon2id avec cost élevé | ✅ bcrypt cost 12 (Argon2id n'est pas implémenté) |
 | V2.3.1 Mot de passe jamais stocké en clair | ✅ Jamais en BDD, jamais en session |
 | V2.6.2 Login sécurisé : HttpOnly Secure SameSite | ✅ `demarrer_session_securisee()` |
 | V2.6.3 RÉGÉNÉRATION session id post login | ✅ `session_regenerate_id(true)` |
@@ -125,7 +128,7 @@ README.md
 | V5.3.5 JSON encode propre | ✅ `json_encode` UTF-8 sur endpoints ajax |
 | V6.1.1 Requêtes paramétrées / ORM safe | ✅ PDO prepare() partout |
 | V7.1.1 CSRF sur actions POST modifiant état | ✅ Token 256 bits + `hash_equals` |
-| V7.2.1 CORS restrictif / credentials autorisés | ✅ CSP default-src self + host whitelist backend |
+| V7.2.1 CORS restrictif / credentials autorisés | ⚪ La CSP n'est pas une politique CORS. L'application utilise des endpoints same-origin; l'extension locale s'appuie sur `host_permissions`. |
 | V8.1.1 Passwords never logged | ✅ journal_actions jamais de mot de passe en clair |
 | V8.3.4 Log d'événements auth + échecs | ✅ connexion_ok / connexion_echec / compte_bloque |
 | V8.3.5 IP, UA dans journal | ✅ colonnes journal_actions ip / user_agent |

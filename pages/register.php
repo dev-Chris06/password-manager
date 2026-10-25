@@ -9,6 +9,7 @@ if (utilisateur_connecte()) {
 
 $erreur = '';
 $email = '';
+$inscriptionAutorisee = inscription_autorisee();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifier_csrf($_POST['csrf_token'] ?? null)) {
@@ -23,18 +24,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($statut['bloque']) {
             $secondes = max(0, (int) $statut['secondes_restantes']);
             $erreur = 'Inscription temporairement indisponible depuis votre réseau. Réessayez dans ' . $secondes . ' seconde(s).';
-        } elseif ($motDePasse !== $confirmation || !inscrire_utilisateur($email, $motDePasse)) {
-            enregistrer_tentative_inscription($ip);
+        } elseif (!$inscriptionAutorisee) {
+            $erreur = 'Les inscriptions sont fermées : un compte existe déjà.';
+        } else {
+            $inscriptionReussie = $motDePasse === $confirmation
+                && inscrire_utilisateur($email, $motDePasse);
+
+            enregistrer_tentative_inscription($ip, $inscriptionReussie);
             $cpt = compter_tentatives_inscription_dans_fenetre($ip);
             $seuil = defined('INSCRIPTION_SEUIL_IP_MAX_1H') ? (int) INSCRIPTION_SEUIL_IP_MAX_1H : 5;
             if ($cpt >= $seuil) {
                 poser_verrou_inscription_ip($ip);
             }
-            $erreur = 'Inscription impossible. Vérifiez les informations saisies.';
-        } else {
-            supprimer_verrou_inscription_ip($ip);
-            definir_flash('success', 'Compte créé. Vous pouvez vous connecter.');
-            redirect_to('pages/login.php');
+
+            if ($inscriptionReussie) {
+                definir_flash('success', 'Compte créé. Vous pouvez vous connecter.');
+                redirect_to('pages/login.php');
+            }
+
+            $inscriptionAutorisee = inscription_autorisee();
+            $erreur = $inscriptionAutorisee
+                ? 'Inscription impossible. Vérifiez les informations saisies.'
+                : 'Les inscriptions sont fermées : un compte existe déjà.';
         }
     }
 }
@@ -47,8 +58,11 @@ afficher_debut_page('Inscription');
 
     <?php if ($erreur !== ''): ?>
         <div class="alert alert-error"><?= e($erreur) ?></div>
+    <?php elseif (!$inscriptionAutorisee): ?>
+        <div class="alert alert-warning">Un compte existe déjà. Les inscriptions sont fermées.</div>
     <?php endif; ?>
 
+    <?php if ($inscriptionAutorisee): ?>
     <form method="post" class="form">
         <?= csrf_input() ?>
 
@@ -64,5 +78,6 @@ afficher_debut_page('Inscription');
 
         <button type="submit" class="btn btn-primary">Créer le compte</button>
     </form>
+    <?php endif; ?>
 </section>
 <?php afficher_fin_page(); ?>
