@@ -43,6 +43,7 @@ Le projet étant en conception (données de test uniquement) et **aucune V2 n'é
 | D14 | Licence | **AGPL-3.0** | Norme du domaine (Vaultwarden, Passbolt) ; une version modifiée hébergée doit publier son code. |
 | D15 | Présentation | **README « portfolio »** (captures, GIF, schémas) + **vidéo de démonstration** (2–3 min) | Pas d'instance publique ; le README et la vidéo suffisent à 95 % des visiteurs. |
 | D16 | Échéance | **Aucune** | Qualité avant vitesse ; avancement phase par phase. |
+| D17 | Niveau de correctifs PHP | **PHP ≥ 8.3.36, 8.4.27 ou 8.5.12** (correctifs du 2026-10-21 contre « PHP2Shell », CVE-2026-109618 et CVE-2026-109619), imposé par `composer.json`, vérifié en CI et au déploiement ; `session.upload_progress.enabled = 0` (atténuation de CVE-2026-109619 et de CVE-2026-115560, encore sans correctif) | Failles d'exécution de code à distance sans authentification, activement exploitées. |
 
 Les décisions détaillées (contexte, alternatives, conséquences) sont consignées dans `docs/DECISIONS.md` (ADR) dès la phase 0.
 
@@ -258,11 +259,18 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
   - lint, PHPStan, PHPUnit, Vitest, build, Playwright ;
   - `composer audit`, `npm audit --omit=dev` ;
   - garde-fou anti-`innerHTML` / `eval`.
-- [ ] `docs/DECISIONS.md` : ADR-001 à ADR-016 (une par décision D1–D16).
+- [ ] `docs/DECISIONS.md` : ADR-001 à ADR-017 (une par décision D1–D17).
 - [ ] Guide d'installation du poste de développement **sans Docker** (PHP local, MySQL 8 local, Node).
 - [ ] README : bandeau « refonte en cours », lien vers ce plan.
 
+- [ ] Exigence de version PHP corrigée (D17) : contrainte `composer.json`, plateforme Composer fixée à 8.3.36, script `tools/check-php-platform.php` exécuté en CI, `public/.user.ini` désactivant `session.upload_progress`.
+
 **Terminé quand** : la CI est verte sur le squelette, `GET /` renvoie une page Twig vide avec les en-têtes de sécurité, et un test Playwright « la page s'affiche » passe.
+
+**Écarts constatés lors de la réalisation** (validés en fin de phase) :
+- l'abonné des en-têtes de sécurité et le nonce CSP sont réalisés dès la phase 0, car le critère de fin l'exige (la phase 1 ne fera que les compléter) ;
+- la matrice MySQL / MariaDB de la CI arrive en phase 1, avec la base de données ; la matrice PHP couvre 8.3, 8.4 et 8.5 ;
+- les documents décrivant l'ancienne application (`INSTALL.md`, `docs/MENACE.md`, `docs/RATE_LIMITING.md`, `docs/TEST_GUIDE.md`) sont supprimés ; ils restent consultables sous le tag `avant-refonte` et seront réécrits en phase 9.
 
 ### Phase 1 — Modèle de données et socle de sécurité (1,5 j)
 
@@ -390,6 +398,7 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
   - cron, sauvegarde chiffrée de la base ;
   - script `deploy/provision.sh` relu et idempotent.
 - [ ] Génération des secrets documentée (`php -r 'echo bin2hex(random_bytes(32));'`).
+- [ ] Vérification de la plateforme à chaque déploiement : `php tools/check-php-platform.php` exécuté avec la configuration de PHP-FPM (version corrigée, `session.upload_progress` désactivé) ; le déploiement s'arrête en cas d'échec.
 - [ ] Les deux guides sont **exécutés pour de vrai** au moins une fois (le VPS peut être loué pour une journée).
 
 **Terminé quand** : l'application tourne sur les deux cibles depuis l'archive de la CI, et le score Mozilla Observatory / securityheaders.com est A+.
@@ -443,6 +452,7 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 - Scarlata et al., *Zero Knowledge (About) Encryption*, USENIX Security 2026 — [présentation](https://www.usenix.org/conference/usenixsecurity26/presentation/scarlata), [ePrint 2026/058](https://eprint.iacr.org/2026/058)
 - Marek Tóth, DOM-based extension clickjacking (DEF CON 33) — [The Hacker News](https://thehackernews.com/2025/08/dom-based-extension-clickjacking.html), [Proton](https://proton.me/id/blog/proton-pass-is-protected-against-clickjacking-attacks), [Devolutions](https://devolutions.net/blog/dom-based-extension-clickjacking-what-workspace-users-need-to-know/)
 - Passbolt — [OpenPGP in Passbolt](https://www.passbolt.com/docs/hosting/openpgp/), [passbolt_api (Packagist)](https://repo.packagist.org/packages/passbolt/passbolt_api)
+- PHP « PHP2Shell » (octobre 2026) — [Rapid7](https://www.rapid7.com/blog/post/etr-cve-2026-109618-and-cve-2026-109619-critical-unauthenticated-remote-code-execution-in-php/), [Qualys](https://blog.qualys.com/vulnerabilities-threat-research/2026/10/20/php-announces-critical-security-release-for-two-vulnerabilities), [CVE-2026-115560 (Security Affairs)](https://securityaffairs.com/201595/security/php-warns-of-new-code-execution-flaw-days-after-php2shell-patches.html)
 - Proton — [offre Backend (PHP/Symfony)](https://job-boards.eu.greenhouse.io/proton/jobs/4540771101)
 - Vaultwarden — [dépôt GitHub](https://github.com/dani-garcia/vaultwarden)
 - OWASP — Password Storage Cheat Sheet, Authentication Cheat Sheet (« device cookies »), ASVS 4.0
