@@ -1,10 +1,43 @@
-.env
+###> symfony/framework-bundle ###
+/.env.local
+/.env.local.php
+/.env.*.local
+/config/secrets/prod/prod.decrypt.private.php
+/public/bundles/
+/var/
+/vendor/
+###< symfony/framework-bundle ###
+
+# Local environment files that may hold secrets
+/.env.local.*
+!/.env.local.dist
+
+# Front-end
+/node_modules/
+/public/build/
+/extension/dist/
+/playwright-report/
+/test-results/
+/blob-report/
+
+# Tooling caches
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.eslintcache
+
+# Local tools and editors
+*.phar
 *.log
-vendor/
-node_modules/
 .idea/
 .vscode/
 Thumbs.db
-*.phar
 
-.phpunit.cache/
+###> friendsofphp/php-cs-fixer ###
+/.php-cs-fixer.php
+/.php-cs-fixer.cache
+###< friendsofphp/php-cs-fixer ###
+
+###> phpunit/phpunit ###
+/phpunit.xml
+/.phpunit.cache/
+###< phpunit/phpunit ###

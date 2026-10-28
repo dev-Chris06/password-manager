@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{% block title %}Gestionnaire de mots de passe{% endblock %}</title>
+        {% block stylesheets %}{% endblock %}
+        {% block javascripts %}
+            <script type="module" src="{{ asset('build/app.js') }}" nonce="{{ csp_nonce() }}"></script>
+        {% endblock %}
+    </head>
+    <body>
+        {% block body %}{% endblock %}
+    </body>
+</html>

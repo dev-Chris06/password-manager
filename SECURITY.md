@@ -47,35 +47,34 @@ Dans la limite du possible, on **ne divulgue la faille** publiquement qu'après 
 
 ## 2. Périmètre pris en charge (in scope)
 
+> ⚠️ Le projet est en **refonte complète** vers une architecture zero-knowledge (voir [docs/PLAN.md](docs/PLAN.md)). Ce périmètre et les limites ci-dessous seront réécrits à la phase 9.
+
 Sont considérés **"en scope"** pour la sécurité :
-- [index.php](index.php) + `pages/*.php` + `ajax/*.php`
-- Code PHP principal : `includes/*.php` + `config/*.php`
-- Schéma SQL : [database.sql](database.sql)
-- Assets JS : `assets/js/*.js` (générateur, dashboard, backup)
-- Extension Chrome MV3 : `extension-chrome/` (manifest, background, content, popup)
+- Code serveur Symfony : `src/`, `config/`, `templates/`, `public/index.php`
+- Code client : `frontend/` (module crypto partagé et application du coffre)
+- Extension Chrome MV3 : `extension/`
+- Scripts de build et de déploiement : `tools/`, `deploy/`
 
 **Sont HORS scope (ne pas signaler sauf impact grave démontré)** :
-- README.md, MENACE.md, TEST_GUIDE.md et docs Markdown hors code
-- Exemples de code dans commentaires
-- Faille qui nécessite déjà un accès admin sur le serveur
-- DoS via upload (aucun upload autorisé dans l'app)
-- Attaques physiques sur la machine utilisateur (hors modèle de menace §4)
+- Documentation Markdown hors code
+- L'état antérieur à la refonte (tag `avant-refonte`), qui n'est plus maintenu
+- Faille qui nécessite déjà un accès administrateur au serveur
+- Attaques physiques sur la machine utilisateur
 
 ---
 
 ## 3. Limites connues — ce qu'on considère "acceptable" (ne pas signaler)
 
-Ces points sont **dûment documentés** dans le modèle de menace [docs/MENACE.md](docs/MENACE.md). Ce ne sont pas des vulnérabilités à corriger dans ce périmètre :
+Ces limites sont détaillées dans [docs/PLAN.md §7](docs/PLAN.md#7-limites-acceptées) et le seront dans le futur modèle de menace :
 
-| Limite | Documentée ici |
-|---|---|
-| Mot de passe maître faible choisi par l'utilisateur (moins de 60 bits d'entropie, ex. `Azerty123456`) | MENACE §4.1.3 |
-| Keylogger / malware sur le poste client | MENACE §4.1.1 |
-| Attaquant qui contrôle intégralement le serveur (modification fichiers PHP, JS) | MENACE §4.1.2 |
-| Perte du mot de passe maître → coffre inaccessible | MENACE §4.1.5 + §5 |
-| Métadonnées `site` / `identifiant` en clair (pas chiffrées en base) | MENACE §4.2.1 |
-| Pas de reset par email (choix zéro-connaissance) | MENACE §5 |
-| Phishing sur site tiers qui usurpe le login du coffre | MENACE §4.1.7 |
+| Limite |
+|---|
+| Serveur compromis **activement** qui servirait un JavaScript modifié à l'interface web (l'extension n'en dépend pas) |
+| Keylogger / logiciel malveillant sur le poste client |
+| Retour en arrière ou masquage d'entrées par un serveur malveillant |
+| Secret TOTP lisible par le serveur (nécessaire à la vérification, chiffré au repos) |
+| Perte du mot de passe maître ou de la Secret Key → coffre définitivement inaccessible |
+| Effacement du presse-papiers non garanti par le navigateur |
 
 ---
 
@@ -101,7 +100,7 @@ CONTRAT, EN DÉLIT OU AUTRE, DÉCOULANT DE OU EN LIEN AVEC LE LOGICIEL OU L'UTIL
 OU D'AUTRES INTERACTIONS AVEC CE LOGICIEL.
 ```
 
-Ce projet est un **exercice de sécurité et de développement portfolio, réalisé à des fins pédagogiques**. Pour un usage personnel réel, évalue attentivement les risques de MENACE.md avant hébergement. Préfère une solution auditee professionnellement (Bitwarden, KeePassXC offline + sync cloud chiffré indépendant, 1Password) pour les identifiants critiques.
+Ce projet est un **exercice de sécurité et de développement portfolio, réalisé à des fins pédagogiques**. Pour un usage personnel réel, évalue attentivement les limites ci-dessus avant hébergement. Préfère une solution auditée professionnellement (Bitwarden, KeePassXC offline + sync cloud chiffré indépendant, 1Password) pour les identifiants critiques.
 
 ---
 

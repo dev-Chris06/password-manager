@@ -1,148 +1,35 @@
-# Gestionnaire de mots de passe sécurisé
+# Gestionnaire de mots de passe zero-knowledge
 
-Application PHP procédurale permettant de gérer un coffre de mots de passe **chiffrés par utilisateur**, avec limitation des tentatives, journal d'audit et extension Chrome MV3 pour le remplissage automatique à la demande. Voir [son guide](extension-chrome/README.md). Conçu comme projet de portfolio orienté bonnes pratiques OWASP.
+> 🚧 **Refonte en cours.** L'application est reconstruite sur une architecture **zero-knowledge** : tout le chiffrement a lieu dans le navigateur ou l'extension, le serveur ne voit jamais ni le mot de passe maître ni les secrets.
+> Le déroulé, les décisions et l'avancement sont décrits dans [docs/PLAN.md](docs/PLAN.md). L'ancienne version (chiffrement côté serveur) reste consultable sous le tag git `avant-refonte`.
 
-## Vue d'architecture
+## Ce que sera l'application
 
-```mermaid
-flowchart LR
-  U[Utilisateur] -->|Mot de passe maître| B[Navigateur]
-  B -->|HTTPS / Session HttpOnly| P[PHP - index.php + pages + ajax]
-  P -->|"PDO prepare() + user_id ownership"| D[(MySQL / MariaDB)]
-  P -->|AES-256-GCM / PBKDF2 bcrypt| C[Crypto serveur]
-  E[Extension Chrome MV3] -->|Fetch + AJAX token dédié| P
+- **Chiffrement côté client** : Argon2id + Secret Key (dérivation à deux secrets), AES-256-GCM, clé de coffre aléatoire.
+- **Double authentification TOTP obligatoire**, codes de secours.
+- **Coffre sur une seule page** avec verrouillage automatique, générateur, sauvegarde chiffrée autonome, vérification des fuites (HIBP, k-anonymat).
+- **Extension Chrome** qui déchiffre localement et remplit uniquement sur le bon domaine.
+- **Serveur Symfony 7.4** qui ne fait que stocker, authentifier, limiter et journaliser.
 
-  style P fill:#e0f2fe,stroke:#075985
-  style C fill:#dcfce7,stroke:#166534
-```
+## Pile technique
 
-## Prérequis
-
-- PHP 8.3 minimum avec extensions : `openssl`, `pdo_mysql`, `mbstring`, `session`, `json`.
-- MySQL 8+ ou MariaDB 10.6+.
-- Navigateur moderne (Clipboard API + `crypto.getRandomValues`).
-- Pour extension : Chromium / Chrome / Edge MV3 (version 2023+).
-
-## Installation rapide
-
-Voir [INSTALL.md](INSTALL.md) (2 options : serveur dev intégré ou hébergement mutualisé Alwaysdata / Infomaniak / OVH).
-
-Pour un test ultra rapide :
-
-```bash
-cp .env.example .env              # édite DB_USER/DB_PASS/DB_NAME après
-mysql -u root -p < database.sql   # crée la base (adapter user si besoin)
-php -S localhost:8000 -t public/ public/router.php  # ouvre http://localhost:8000
-```
-
-## Usage rapide
-
-1. **Inscription** : email + mot de passe maître ≥ 12 caractères.
-2. **Dashboard** : ajouter, modifier, supprimer, filtrer par catégorie.
-3. **Copier** : bouton à côté de chaque identifiant / mot de passe → presse-papiers **auto-effacé au bout de 15 secondes**.
-4. **Sauvegardes** : export chiffré du coffre + réimport avec re-demande du MDP maître.
-5. **Extension** : charger `extension-chrome/` dans `chrome://extensions`, puis ouvrir son popup sur une page avec formulaire pour activer le remplissage à la demande.
-
-## Sécurité
-
-### Briques cryptographiques
-
-| Brique | Implémentation | Fichier |
-|---|---|---|
-| Hash du MDP maître | `password_hash` + **bcrypt cost 12** | [config/config.php](config/config.php) · [includes/crypto.php](includes/crypto.php#L144-L147) |
-| Dérivation clé AES | PBKDF2 **SHA-256, 600 000 itérations** | [includes/crypto.php#L23-L40](includes/crypto.php#L23-L40) |
-| Chiffrement symétrique | **AES-256-GCM** IV 12 octets aléatoires / entrée | [includes/crypto.php#L47-L128](includes/crypto.php#L47-L128) |
-| Source d'aléa CSPRNG serveur | `random_bytes()` (PHP) · `crypto.getRandomValues()` (JS) | Globale |
-
-### Autres garanties
-
-- Clé de chiffrement **jamais stockée en base** (session PHP uniquement, base64).
-- Cookies de session : `HttpOnly`, `SameSite=Strict`, `Secure` **automatique en HTTPS**.
-- Régénération d'ID de session après chaque login.
-- CSRF token 256 bits sur **tous les formulaires POST + endpoints AJAX**.
-- Toutes requêtes via `PDO::prepare` + paramètres liés (0 concat SQL).
-- `WHERE user_id = ?` systématique sur CRUD (pas d'IDOR direct).
-- Limitation des tentatives de connexion sur trois axes (paire IP/courriel, IP globale et courriel global), avec durées de blocage progressives. Un axe distinct limite aussi les créations répétées de comptes par IP.
-- Timeout sessions : inactivité 5 min + durée max 1 h.
-- Re-demande du **mot de passe maître actuel** avant l'export du coffre et le changement de mot de passe maître.
-- Headers de sécurité révisés CSP nonces + `frame-ancestors 'none'` + `base-uri 'self'` + `form-action 'self'` + retrait `X-XSS-Protection`.
-- Journal d'audit structuré : purge des lignes de plus de 90 jours (`JOURNAL_RETENTION_DAYS`) lors des connexions, avec IP, agent utilisateur et détail d'action.
-
-## Récupération de compte
-
-Il n’existe volontairement **aucune récupération du mot de passe maître** : la perte du mot de passe implique la perte du coffre chiffré.
-
-
-## Structure
-
-```text
-config/              # Paramètres PHP + env loader + PDO
-includes/            # auth, crypto, entrees
-pages/               # Vues HTML (login, dashboard, backup…)
-ajax/                # Endpoints JSON (déchiffrement, export/import, remplissage, extension)
-assets/css/          # style.css
-assets/js/           # dashboard, generateur, force_mdp, backup
-public/              # racine web et routeur du serveur PHP intégré
-  router.php
-  .htaccess
-docs/                # MENACE, TEST_GUIDE, RATE_LIMITING
-extension-chrome/    # Manifest V3 + content/popup/background
-index.php            # Point d'entrée + redirect login/dashboard
-INSTALL.md           # Guide d'installation pas à pas
-SECURITY.md          # Politique de signalement de vulnérabilités
-database.sql         # Schéma initial de la BDD
-README.md
-```
-
-## Documentation complémentaire
-
-| Document | Lien |
+| Couche | Technologies |
 |---|---|
-| 📋 Modèle de menace (adversaires, garanties, limites, récupération) | [docs/MENACE.md](docs/MENACE.md) |
-| 🧪 Guide de test manuel (15 scénarios) | [docs/TEST_GUIDE.md](docs/TEST_GUIDE.md) |
-| ⏱️ Rate limiting (logique, seuils, purge) | [docs/RATE_LIMITING.md](docs/RATE_LIMITING.md) |
-| 🪪 Extension Chrome / autofill | [extension-chrome/README.md](extension-chrome/README.md) |
-| 🛠️ Installation + FAQ + troubleshooting | [INSTALL.md](INSTALL.md) |
-| 🚨 Vulnérabilités / divulgation responsable | [SECURITY.md](SECURITY.md) |
+| Serveur | PHP 8.3+, Symfony 7.4 LTS, Doctrine, MySQL 8 / MariaDB 11.4 |
+| Client et extension | TypeScript, esbuild, WebCrypto, Argon2id (WASM) |
+| Qualité | PHPUnit, PHPStan, PHP-CS-Fixer, Vitest, ESLint, Playwright, GitHub Actions |
 
-## Grille OWASP ASVS — Niveau 1 (autoévaluation)
+Les choix sont justifiés dans [docs/DECISIONS.md](docs/DECISIONS.md).
 
-| Critère OWASP ASVS 4.0.3 N1 | Statut |
-|---|---|
-| V1.1.1 Framework sécuritaire + patches à jour | ✅ Procédural sans framework, briques PHP récentes |
-| V1.2.1 Fichiers sensibles (.env, backups) hors docroot | 🟡 Le dépôt fournit `public/`; le serveur doit effectivement utiliser ce dossier comme DocumentRoot. |
-| V2.1.1 Longueur minimale MDP (>= 12) | ✅ `mot_de_passe_valide()` + HTML minlength |
-| V2.1.4 Mot de passe interdit (dictionnaire rockyou) | ⚪ Non implémenté (recommandé pour ASVS N2) |
-| V2.2.1 bcrypt/Argon2id avec cost élevé | ✅ bcrypt cost 12 (Argon2id n'est pas implémenté) |
-| V2.3.1 Mot de passe jamais stocké en clair | ✅ Jamais en BDD, jamais en session |
-| V2.6.2 Login sécurisé : HttpOnly Secure SameSite | ✅ `demarrer_session_securisee()` |
-| V2.6.3 RÉGÉNÉRATION session id post login | ✅ `session_regenerate_id(true)` |
-| V2.7.1 Logout invalide session côté serveur | ✅ `deconnecter_utilisateur()` + session_destroy |
-| V4.1.1 `Content-Security-Policy` | ✅ Nonces, `frame-ancestors`, `base-uri`, `form-action` |
-| V4.1.2 `X-Content-Type-Options: nosniff` | ✅ Oui |
-| V4.1.3 `X-Frame-Options: DENY / frame-ancestors none` | ✅ Les deux (compat ancien navigateurs) |
-| V4.1.4 `Referrer-Policy` | ✅ `strict-origin-when-cross-origin` |
-| V4.1.5 `Strict-Transport-Security` en HTTPS | ✅ `max-age=31536000; includeSubDomains` |
-| V5.1.1 Validation entrées serveur (pas seulement client) | ✅ filter_var + strlen + catégories whitelist |
-| V5.3.1 Sortie échappée par contexte (HTML/JS) | ✅ `e()` alias `htmlspecialchars()` |
-| V5.3.5 JSON encode propre | ✅ `json_encode` UTF-8 sur endpoints ajax |
-| V6.1.1 Requêtes paramétrées / ORM safe | ✅ PDO prepare() partout |
-| V7.1.1 CSRF sur actions POST modifiant état | ✅ Token 256 bits + `hash_equals` |
-| V7.2.1 CORS restrictif / credentials autorisés | ⚪ La CSP n'est pas une politique CORS. L'application utilise des endpoints same-origin; l'extension locale s'appuie sur `host_permissions`. |
-| V8.1.1 Passwords never logged | ✅ journal_actions jamais de mot de passe en clair |
-| V8.3.4 Log d'événements auth + échecs | ✅ connexion_ok / connexion_echec / compte_bloque |
-| V8.3.5 IP, UA dans journal | ✅ colonnes journal_actions ip / user_agent |
-| V9.1.1 TLS en production requis | ✅ README le recommande, cookie Secure auto-HTTPS |
-| V10.1.1 Crypto AES-GCM 256 bits | ✅ `aes-256-gcm` |
-| V10.1.2 IV/nonces cryptographiquement aléatoires | ✅ `random_bytes(12)` + par entrée |
-| V10.2.1 KDF itératif PBKDF2 avec >= 100k itérations | ✅ 600k |
-| V14.4.1 Build/Dockerfile sans secrets hardcodés | ✅ `.env` exclus de Git |
+## Démarrer en local
 
-Légende : ✅ conforme · 🟡 partielle / en cours · ⚪ non applicable / hors périmètre N1
+Voir [docs/DEVELOPPEMENT.md](docs/DEVELOPPEMENT.md) (installation sans Docker).
 
-## Notes locales dev
+## Contribuer et sécurité
 
-- **HTTP localhost** : cookie **non** Secure (conforme). Activer `extension=curl` si besoin, mais non nécessaire.
-- **HTTPS** : cookie Secure + HSTS activés automatiquement par `is_https_request()`.
-- **Tester l'extension** : onglet `chrome://extensions` → Activer le mode développeur → Charger l'extension non empaquetée → pointer `extension-chrome/`.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — conventions de code et de commit.
+- [SECURITY.md](SECURITY.md) — signaler une vulnérabilité.
 
+## Licence
+
+[AGPL-3.0-or-later](LICENSE).
