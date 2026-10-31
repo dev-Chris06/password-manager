@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Gestionnaire de mots de passe",
+  "description": "Remplit vos identifiants depuis votre coffre zero-knowledge. Le déchiffrement a lieu dans l'extension.",
+  "version": "2.0.0",
+  "minimum_chrome_version": "120",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArAbESEsEjn8odXCAVHgOMFCGRTZfGDj+zXZErpcwiRgEbYfXfxajv7fCpe9YYLE98d4/BeMRhS7FFmKnU/gRxKCmebYQDKqqU9/tVHyjvDxyqJW7uUFQr0wZQ9H6qhw7Jzl9C53sNqfXXS5EZq5eFYxap+2ynktdSCivcnj+W/NiRYpCCweNk7FyFEeixfLUD8d/GNfYH1FAbWXe0bFTfz9IF/LwAi97PdMa5roDzBxMu0wxtiTKwph2jonYmv1SH1KWZ/d+50ac0JutDU0CI7DRLnz98WeIBEzbwAWd2mGVIns7I85OPvcbrZB51FwH8cxAappLpoQVRHhyI/3N9wIDAQAB",
+  "permissions": ["activeTab", "scripting", "storage", "alarms"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Gestionnaire de mots de passe", "default_popup": "popup.html" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  }
+}
