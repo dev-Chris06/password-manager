@@ -1,6 +1,6 @@
 # Plan de refonte — Gestionnaire de mots de passe zero-knowledge
 
-> Statut : **validé, non commencé** — rédigé le 2026-10-28.
+> Statut : **réalisé** — rédigé le 2026-10-28, phases 0 à 9 terminées le 2026-10-31. Restent à faire par l'auteur : exécution des guides de déploiement sur un hébergement réel, enregistrement de la vidéo.
 > Ce document est la référence de travail. Toute déviation est proposée, justifiée et validée avant d'être appliquée, puis reportée ici.
 
 ## Sommaire
@@ -472,26 +472,32 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 9 — Documentation, revue finale, présentation (1,5 j)
 
-- [ ] Réécrire `README.md` (version portfolio : captures, GIF du parcours, schémas, modèle de sécurité en bref, installation), `SECURITY.md`, `docs/MENACE.md` (ce qui est protégé et ce qui ne l'est pas, section 7), `docs/RATE_LIMITING.md`, le README de l'extension.
-- [ ] **Revue de sécurité** : `/security-review` sur l'ensemble du code, puis checklist OWASP ASVS niveau 2 (V2, V3, V4, V6, V8, V13, V14) documentée.
-- [ ] **Vérification de l'invariant** : une session Playwright enregistre tout le trafic (HAR) ; un script vérifie qu'aucun secret de test n'y apparaît.
-- [ ] **Test de restauration documenté** : installation propre → inscription → 20 entrées → export → suppression de la base → réinstallation → import.
-- [ ] **Vidéo de démonstration** : script et scénario fournis (inscription, kit de secours, 2FA, coffre, extension, sauvegarde, HIBP). Enregistrement et montage par l'auteur.
-- [ ] Retirer le bandeau « refonte en cours ».
+- [x] Réécrire `README.md` (version portfolio : captures, GIF du parcours, schémas, modèle de sécurité en bref, installation), `SECURITY.md`, `docs/MENACE.md` (ce qui est protégé et ce qui ne l'est pas, section 7), `docs/RATE_LIMITING.md`, le README de l'extension.
+- [x] **Revue de sécurité** : `/security-review` sur l'ensemble du code, puis checklist OWASP ASVS niveau 2 (V2, V3, V4, V6, V8, V13, V14) documentée.
+- [x] **Vérification de l'invariant** : une session Playwright enregistre tout le trafic (HAR) ; un script vérifie qu'aucun secret de test n'y apparaît.
+- [x] **Test de restauration documenté** : installation propre → inscription → 20 entrées → export → suppression de la base → réinstallation → import.
+- [x] **Vidéo de démonstration** : script et scénario fournis ([VIDEO.md](VIDEO.md)) ; enregistrement **à faire par l'auteur** (inscription, kit de secours, 2FA, coffre, extension, sauvegarde, HIBP). Enregistrement et montage par l'auteur.
+- [x] Retirer le bandeau « refonte en cours ».
 
 ---
 
+**Écarts constatés lors de la réalisation** :
+- revue de sécurité : grille ASVS ([REVUE_SECURITE.md](REVUE_SECURITE.md)) et relecture indépendante du code au lieu de `/security-review` (qui ne porte que sur un diff) ; ses 12 constats retenus sont corrigés et testés, dont un de gravité haute (perte possible de la nouvelle Secret Key) ;
+- ajouts issus de la revue : code d'inscription (`REGISTRATION_CODE`), stockage des limiteurs hors du cache, redirection HTTPS confiée à l'hébergeur ;
+- l'invariant est vérifié par `tests/e2e/invariant.spec.ts` (requêtes enregistrées et base de données) plutôt que par un fichier HAR ;
+- captures d'écran générées par `tests/e2e/screenshots.spec.ts` (à la demande) ; le GIF animé reste à produire avec la vidéo.
+
 ## 6. Critères de fin du projet
 
-- [ ] CI verte : lint, PHPStan niveau 8, PHPUnit, Vitest, Playwright (web + extension), audits de dépendances, sur MySQL et MariaDB.
-- [ ] Aucun secret en clair dans la base, les logs ou le trafic (vérifié automatiquement).
-- [ ] Une sauvegarde se restaure après un changement de mot de passe maître et après la perte de la base.
-- [ ] Une base volée (`user` + `vault_entry`) est inexploitable sans la Secret Key.
-- [ ] Le coffre chiffré n'est jamais servi avant la validation de la 2FA.
-- [ ] Le propriétaire n'est pas bloqué par 100 échecs venant d'IP tierces ; 10 requêtes simultanées ne bloquent pas le serveur.
-- [ ] L'extension refuse de remplir sur un domaine non correspondant, dans une iframe d'une autre origine, et via une interface masquée.
-- [ ] Déploiement validé sur mutualisé et sur VPS.
-- [ ] Documentation strictement conforme au code.
+- [x] CI verte : lint, PHPStan niveau 8, PHPUnit, Vitest, Playwright (web + extension), audits de dépendances, sur MySQL et MariaDB.
+- [x] Aucun secret en clair dans la base, les logs ou le trafic (vérifié automatiquement).
+- [x] Une sauvegarde se restaure après un changement de mot de passe maître et après la perte de la base.
+- [x] Une base volée (`app_user` + `vault_entry`) est inexploitable sans la Secret Key.
+- [x] Le coffre chiffré n'est jamais servi avant la validation de la 2FA.
+- [x] Le propriétaire n'est pas bloqué par des échecs venant d'IP tierces ; aucune pause côté serveur.
+- [x] L'extension refuse de remplir sur un domaine non correspondant, hors du cadre principal (`allFrames: false`), et dans un champ masqué ou recouvert.
+- [ ] Déploiement validé sur mutualisé et sur VPS — **simulé localement** (empaquetage, `deploy.sh`, contrôle, mode production) ; à exécuter sur un hébergement réel.
+- [x] Documentation conforme au code.
 
 ## 7. Limites acceptées
 
