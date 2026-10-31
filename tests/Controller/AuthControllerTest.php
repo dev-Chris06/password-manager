@@ -95,7 +95,8 @@ final class AuthControllerTest extends WebTestCase
 
         $data = self::api($this->client, 'POST', '/api/auth/login', ['email' => self::EMAIL, 'authProof' => $proof]);
         self::assertResponseIsSuccessful();
-        self::assertSame('done', $data['step']);
+        self::assertSame('2fa-setup', $data['step']);
+        self::enrollTwoFactor($this->client, $proof);
         self::assertNotNull($this->client->getCookieJar()->get('pm_device'));
 
         $vault = self::api($this->client, 'GET', '/api/vault');
@@ -156,6 +157,7 @@ final class AuthControllerTest extends WebTestCase
         $proof = self::newProof();
         self::api($this->client, 'POST', '/api/auth/register', self::registrationPayload(self::EMAIL, $proof));
         self::api($this->client, 'POST', '/api/auth/login', ['email' => self::EMAIL, 'authProof' => $proof]);
+        self::enrollTwoFactor($this->client, $proof);
         self::api($this->client, 'POST', '/api/auth/logout');
         $deviceCookie = $this->client->getCookieJar()->get('pm_device');
         self::assertNotNull($deviceCookie);
@@ -172,7 +174,7 @@ final class AuthControllerTest extends WebTestCase
         $this->client->getCookieJar()->set($deviceCookie);
         $data = self::api($this->client, 'POST', '/api/auth/login', ['email' => self::EMAIL, 'authProof' => $proof]);
         self::assertResponseIsSuccessful();
-        self::assertSame('done', $data['step']);
+        self::assertSame('2fa', $data['step']);
     }
 
     public function testLogoutEndsTheSession(): void
@@ -180,6 +182,7 @@ final class AuthControllerTest extends WebTestCase
         $proof = self::newProof();
         self::api($this->client, 'POST', '/api/auth/register', self::registrationPayload(self::EMAIL, $proof));
         self::api($this->client, 'POST', '/api/auth/login', ['email' => self::EMAIL, 'authProof' => $proof]);
+        self::enrollTwoFactor($this->client, $proof);
 
         self::api($this->client, 'POST', '/api/auth/logout');
         self::assertResponseIsSuccessful();

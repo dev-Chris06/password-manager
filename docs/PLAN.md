@@ -31,7 +31,7 @@ Le projet étant en conception (données de test uniquement) et **aucune V2 n'é
 | D2 | Données existantes | **Repartir de zéro** | Données de test uniquement ; pas de migration. |
 | D3 | KDF | **Argon2id** (WASM, `hash-wasm`), m = 64 MiB, t = 3, p = 1, paramètres stockés par compte | Résistance mémoire aux attaques GPU ; recommandé par OWASP ; proposé par Bitwarden. |
 | D4 | Second secret | **Secret Key 128 bits** (dérivation à deux secrets, à la 1Password) | Rend une base ou une sauvegarde volée incraquable. |
-| D5 | Double authentification | **TOTP + 10 codes de secours, obligatoire** | Universel, simple dans l'extension ; empêche de télécharger le coffre chiffré avec une preuve volée. |
+| D5 | Double authentification | **TOTP + 10 codes de secours, obligatoire** (mise en œuvre : ADR-018) | Universel, simple dans l'extension ; empêche de télécharger le coffre chiffré avec une preuve volée. |
 | D6 | Mots de passe compromis | **HIBP à la demande** (k-anonymat) | Fonction attendue d'un gestionnaire ; aucune donnée exploitable envoyée. |
 | D7 | Backend | **PHP 8.3+ / Symfony 7.4 LTS** (API JSON + Twig minimal) | Composants de sécurité éprouvés (RateLimiter, Security, CSRF, 2FA) au lieu de code maison ; choix de Proton ; LTS jusqu'en 2029. |
 | D8 | Frontend et extension | **TypeScript strict + esbuild**, sans framework UI | Typage du code crypto ; un seul module crypto partagé web/extension ; pas de dépendance d'exécution lourde. |
@@ -218,7 +218,7 @@ deploy/                 ← script VPS, configuration Caddy, pool PHP-FPM, archi
 | `symfony/*` 7.4 (framework, security, rate-limiter, twig, uid, …) | Serveur | Socle (D7) |
 | `doctrine/orm`, `doctrine/doctrine-migrations-bundle` | Serveur | Accès base et migrations versionnées |
 | `symfony/monolog-bundle` | Serveur | Journalisation des erreurs (fichier, compatible mutualisé) |
-| `scheb/2fa-bundle`, `scheb/2fa-totp`, `scheb/2fa-backup-code` | Serveur | Bibliothèque de référence pour la 2FA sous Symfony (D5) |
+| `spomky-labs/otphp` | Serveur | Calcul TOTP (RFC 6238) ; remplace `scheb/2fa-bundle` (ADR-018) |
 | `endroid/qr-code` | Serveur | QR code en SVG (remplace l'ancienne copie de `phpqrcode`) |
 | `hash-wasm` | Client | Argon2id en WASM (D3) |
 | `esbuild`, `typescript`, `vitest`, `eslint`, `@playwright/test` | Développement uniquement | Build et tests |
@@ -355,17 +355,25 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 4 — Double authentification (1,5 j)
 
-- [ ] Intégration de `scheb/2fa-bundle` en mode API (réponses JSON, étape « en attente »).
-- [ ] Secret TOTP chiffré au repos (section 4.6), anti-rejeu par `totp_last_counter`, tolérance de ±1 période.
-- [ ] **Activation obligatoire** à la première connexion : QR code SVG (`endroid/qr-code`) et clé affichée en texte, confirmation par code, affichage unique de 10 codes de secours (téléchargement en `.txt`).
-- [ ] Endpoints `2fa/setup`, `enable`, `backup-codes` ; `disable` refusé tant que la 2FA est obligatoire.
-- [ ] Alerte dans le coffre quand il reste 3 codes de secours ou moins.
-- [ ] Commande CLI `app:2fa:reset <email>` (refuse de s'exécuter hors CLI, journalisée) en dernier recours pour le propriétaire du serveur.
-- [ ] Journal : `2fa_enabled`, `2fa_failure`, `backup_code_used`, `backup_codes_regenerated`, `2fa_reset_cli`.
+- [x] Parcours en deux étapes en JSON (réponses `2fa` / `2fa-setup`, étape « en attente ») — avec `spomky-labs/otphp`, voir ADR-018.
+- [x] Secret TOTP chiffré au repos (section 4.6), anti-rejeu par `totp_last_counter`, tolérance de ±1 période.
+- [x] **Activation obligatoire** à la première connexion : QR code SVG (`endroid/qr-code`) et clé affichée en texte, confirmation par code, affichage unique de 10 codes de secours (téléchargement en `.txt`).
+- [x] Endpoints `2fa/setup`, `enable`, `backup-codes` ; `disable` refusé tant que la 2FA est obligatoire.
+- [x] Alerte dans le coffre quand il reste 3 codes de secours ou moins.
+- [x] Commande CLI `app:2fa:reset <email>` (refuse de s'exécuter hors CLI, journalisée) en dernier recours pour le propriétaire du serveur.
+- [x] Journal : `2fa_enabled`, `2fa_failure`, `backup_code_used`, `backup_codes_regenerated`, `2fa_reset_cli`.
 
 **Tests** :
 - PHPUnit : vecteurs RFC 6238 ; rejeu refusé ; ±1 période acceptée et ±2 refusée ; limiteur 2FA ; étape 2FA sans login préalable → 401 ; état en attente expiré → refusé ; **`/api/vault` inaccessible avant la 2FA** ; code de secours à usage unique ; commande CLI.
 - Playwright : parcours complet avec un code calculé par un utilitaire de test.
+
+**Écarts constatés lors de la réalisation** :
+- `scheb/2fa-bundle` est remplacé par `spomky-labs/otphp` (la bibliothèque TOTP qu'il utilise lui-même) et un parcours en deux étapes fondé sur les rôles de Symfony — voir [ADR-018](DECISIONS.md#adr-018--2fa-sans-scheb2fa-bundle) ;
+- après la seule preuve, le jeton de session porte `ROLE_2FA_PENDING` (code attendu) ou `ROLE_2FA_SETUP` (activation obligatoire) ; seul le second facteur donne `ROLE_USER`, requis par toutes les autres routes ;
+- `User` implémente `EquatableInterface` : Symfony comparait les rôles du jeton à ceux de l'utilisateur et fermait la session intermédiaire ;
+- pas de route `2fa/disable` : la double authentification étant obligatoire, elle ne peut être retirée que par la commande `app:2fa:reset` sur le serveur ;
+- le device cookie n'est plus délivré qu'après le second facteur ;
+- le nombre de codes de secours restants est renvoyé par `GET /api/vault` ; alerte affichée à partir de 3.
 
 ### Phase 5 — Coffre, application sur une seule page (3 j)
 

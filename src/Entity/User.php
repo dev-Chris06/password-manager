@@ -8,6 +8,7 @@ use App\Model\KdfParameters;
 use App\Repository\UserRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Security\Core\User\EquatableInterface;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
@@ -22,7 +23,7 @@ use Symfony\Component\Security\Core\User\UserInterface;
 #[ORM\Table(name: 'app_user')]
 #[ORM\UniqueConstraint(name: 'uniq_app_user_email', columns: ['email'])]
 #[ORM\HasLifecycleCallbacks]
-class User implements UserInterface, PasswordAuthenticatedUserInterface
+class User implements UserInterface, PasswordAuthenticatedUserInterface, EquatableInterface
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -221,6 +222,19 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function getPassword(): string
     {
         return $this->authHash;
+    }
+
+    /**
+     * Decides whether a session must be closed when the user is reloaded. The roles of the
+     * session token are deliberately not compared: between the two login factors the token only
+     * carries a restricted role (see ProofAuthenticator::createToken()).
+     */
+    public function isEqualTo(UserInterface $user): bool
+    {
+        return $user instanceof self
+            && $user->getId() === $this->id
+            && $user->getEmail() === $this->email
+            && $user->getAuthHash() === $this->authHash;
     }
 
     #[\Deprecated]

@@ -31,6 +31,7 @@ export interface VaultResponse {
   readonly salt: string;
   readonly wrappedVaultKey: string;
   readonly entries: EncryptedEntry[];
+  readonly backupCodesRemaining: number;
 }
 
 export interface UnlockedVault {
@@ -78,6 +79,8 @@ export interface DerivedLogin {
   readonly kdf: KdfParameters;
   readonly secretKeyText: string;
   readonly wrapKey: CryptoKey;
+  /** Kept in memory for the two-factor enrollment, which asks for a fresh proof. */
+  readonly authProof: string;
 }
 
 /** First login step: derive the keys from the prelogin parameters and send the proof. */
@@ -101,7 +104,30 @@ export async function login(api: ApiClient, credentials: Credentials): Promise<{
   // Logging in renews the session and its CSRF token.
   await api.session();
 
-  return { result, derived: { email, kdf: prelogin.kdf, secretKeyText: formatSecretKey(secretKey), wrapKey } };
+  return { result, derived: { email, kdf: prelogin.kdf, secretKeyText: formatSecretKey(secretKey), wrapKey, authProof } };
+}
+
+export interface TwoFactorEnrollment {
+  readonly secret: string;
+  readonly uri: string;
+  readonly qrCode: string;
+}
+
+/** Second login step: TOTP code or backup code. Completing it renews the session and its CSRF token. */
+export async function completeSecondFactor(api: ApiClient, answer: { code: string } | { backupCode: string }): Promise<void> {
+  await api.post('/api/auth/2fa/check', answer);
+  await api.session();
+}
+
+export async function startTwoFactorEnrollment(api: ApiClient, derived: DerivedLogin): Promise<TwoFactorEnrollment> {
+  return api.post<TwoFactorEnrollment>('/api/2fa/setup', { authProof: derived.authProof });
+}
+
+/** Confirms the enrollment; returns the backup codes, shown only once. */
+export async function confirmTwoFactorEnrollment(api: ApiClient, code: string): Promise<string[]> {
+  const response = await api.post<{ backupCodes: string[] }>('/api/2fa/enable', { code });
+  await api.session();
+  return response.backupCodes;
 }
 
 /** Once the server session is complete: fetch the encrypted vault and unwrap its key locally. */

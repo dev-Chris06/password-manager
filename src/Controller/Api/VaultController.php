@@ -6,6 +6,7 @@ namespace App\Controller\Api;
 
 use App\Entity\User;
 use App\Repository\VaultEntryRepository;
+use App\TwoFactor\BackupCodeService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
@@ -17,7 +18,7 @@ final class VaultController extends AbstractController
      * Everything the client needs to unlock and display the vault, all encrypted.
      */
     #[Route('/api/vault', name: 'api_vault', methods: ['GET'])]
-    public function __invoke(#[CurrentUser] User $user, VaultEntryRepository $entries): JsonResponse
+    public function __invoke(#[CurrentUser] User $user, VaultEntryRepository $entries, BackupCodeService $backupCodes): JsonResponse
     {
         $items = [];
         foreach ($entries->findBy(['user' => $user], ['updatedAt' => 'DESC']) as $entry) {
@@ -35,6 +36,7 @@ final class VaultController extends AbstractController
             'salt' => $user->getKdfSalt(),
             'wrappedVaultKey' => $user->getWrappedVaultKey(),
             'entries' => $items,
+            'backupCodesRemaining' => $backupCodes->remaining($user),
         ]);
     }
 }

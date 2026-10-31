@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { EMAIL, loginThroughUi, MASTER_PASSWORD, recordTraffic, registerThroughUi, resetState } from './support';
+import { EMAIL, loginThroughUi, MASTER_PASSWORD, passSecondFactor, recordTraffic, registerThroughUi, resetState } from './support';
 
 test.beforeEach(() => {
   resetState();
@@ -9,7 +9,7 @@ test.beforeEach(() => {
 test('registration, emergency kit and first login never send the master password or the Secret Key', async ({ page }) => {
   const traffic = recordTraffic(page);
 
-  const secretKey = await registerThroughUi(page);
+  const { secretKey } = await registerThroughUi(page);
 
   const sent = traffic.join('\n');
   expect(sent).toContain('/api/auth/register');
@@ -39,10 +39,11 @@ test('locking keeps the session and unlocking only needs the master password', a
 });
 
 test('a known device logs in without the Secret Key, a new one must type it', async ({ page, browser }) => {
-  const secretKey = await registerThroughUi(page);
+  const { secretKey, totpSecret, backupCodes } = await registerThroughUi(page);
   await page.getByRole('button', { name: 'Se déconnecter' }).click();
 
   await loginThroughUi(page);
+  await passSecondFactor(page, { totpSecret });
   await expect(page.getByTestId('vault-status')).toContainText(EMAIL, { timeout: 30_000 });
 
   const newDevice = await browser.newContext();
@@ -58,6 +59,8 @@ test('a known device logs in without the Secret Key, a new one must type it', as
 
   await other.getByLabel('Secret Key').fill(secretKey.toLowerCase().replaceAll('-', ' '));
   await other.getByRole('button', { name: 'Se connecter' }).click();
+  // The TOTP code of this period was already used: the new device uses a backup code.
+  await passSecondFactor(other, { backupCode: backupCodes[0] ?? '' });
   await expect(other.getByTestId('vault-status')).toContainText(EMAIL, { timeout: 30_000 });
   await newDevice.close();
 });

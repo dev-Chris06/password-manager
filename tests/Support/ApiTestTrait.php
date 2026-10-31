@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Support;
 
+use App\TwoFactor\TotpService;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Component\Clock\Clock;
 
 /**
  * Calls the JSON API the way the web client does (client header, CSRF token, JSON body).
@@ -69,6 +71,28 @@ trait ApiTestTrait
             'authProof' => $authProof,
             'wrappedVaultKey' => base64_encode(random_bytes(61)),
         ];
+    }
+
+    /**
+     * Completes the mandatory two-factor enrollment of a session that just sent its proof.
+     *
+     * @return array{secret: string, backupCodes: list<string>}
+     */
+    private static function enrollTwoFactor(KernelBrowser $client, string $authProof): array
+    {
+        $setup = self::api($client, 'POST', '/api/2fa/setup', ['authProof' => $authProof]);
+        self::assertIsString($setup['secret']);
+        $enabled = self::api($client, 'POST', '/api/2fa/enable', ['code' => TotpService::codeAt($setup['secret'], Clock::get()->now()->getTimestamp())]);
+        self::assertIsArray($enabled['backupCodes']);
+        /** @var list<string> $backupCodes */
+        $backupCodes = $enabled['backupCodes'];
+
+        return ['secret' => $setup['secret'], 'backupCodes' => $backupCodes];
+    }
+
+    private static function totp(string $secret): string
+    {
+        return TotpService::codeAt($secret, Clock::get()->now()->getTimestamp());
     }
 
     private static function newProof(): string

@@ -22,6 +22,7 @@ use Symfony\Component\Security\Http\Authenticator\Passport\Badge\PasswordUpgrade
 use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
 use Symfony\Component\Security\Http\Authenticator\Passport\Credentials\PasswordCredentials;
 use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
+use Symfony\Component\Security\Http\Authenticator\Token\PostAuthenticationToken;
 
 /**
  * Logs in with the authentication proof derived on the client (docs/PLAN.md §4.4).
@@ -32,6 +33,11 @@ use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
 final class ProofAuthenticator extends AbstractAuthenticator
 {
     public const string SESSION_AUTHENTICATED_AT = '_pm_authenticated_at';
+    public const string SESSION_FIRST_FACTOR_AT = '_pm_first_factor_at';
+    /** First factor done, waiting for the TOTP or backup code. */
+    public const string ROLE_PENDING = 'ROLE_2FA_PENDING';
+    /** First factor done, two-factor authentication must be enrolled before anything else. */
+    public const string ROLE_SETUP = 'ROLE_2FA_SETUP';
     private const string ATTRIBUTE_EMAIL = '_pm_login_email';
     private const string ATTRIBUTE_DEVICE = '_pm_login_device';
 
@@ -85,23 +91,48 @@ final class ProofAuthenticator extends AbstractAuthenticator
         );
     }
 
+    /**
+     * Only a login whose second factor was verified gets the user roles; after the proof alone,
+     * the token can only complete (or enroll) the second factor (docs/PLAN.md §4.4).
+     */
+    public function createToken(Passport $passport, string $firewallName): TokenInterface
+    {
+        $user = $passport->getUser();
+        if ($passport->hasBadge(SecondFactorCompletedBadge::class)) {
+            $roles = $user->getRoles();
+        } else {
+            $roles = $user instanceof User && $user->isTotpEnabled() ? [self::ROLE_PENDING] : [self::ROLE_SETUP];
+        }
+
+        return new PostAuthenticationToken($user, $firewallName, $roles);
+    }
+
     public function onAuthenticationSuccess(Request $request, TokenInterface $token, string $firewallName): Response
     {
         $user = $token->getUser();
         if (!$user instanceof User) {
             throw new \LogicException('Unexpected user class.');
         }
-
-        $device = $request->attributes->get(self::ATTRIBUTE_DEVICE);
-        $device = $device instanceof TrustedDevice ? $device : null;
-        $this->throttler->recordSuccess($user->getEmail(), (string) $request->getClientIp(), null === $device ? null : TrustedDeviceManager::limiterKey($device));
-        $request->getSession()->set(self::SESSION_AUTHENTICATED_AT, time());
-        $this->auditLogger->log($user, 'login_success');
+        $session = $request->getSession();
 
         // The CSRF tokens are cleared when the session is migrated after this method:
         // the client fetches a new one from /api/session.
-        $response = new JsonResponse(['step' => 'done']);
+        if (\in_array(self::ROLE_PENDING, $token->getRoleNames(), true) || \in_array(self::ROLE_SETUP, $token->getRoleNames(), true)) {
+            $device = $request->attributes->get(self::ATTRIBUTE_DEVICE);
+            $this->throttler->recordSuccess($user->getEmail(), (string) $request->getClientIp(), $device instanceof TrustedDevice ? TrustedDeviceManager::limiterKey($device) : null);
+            $session->set(self::SESSION_FIRST_FACTOR_AT, time());
+            $this->auditLogger->log($user, 'login_first_factor');
 
+            return new JsonResponse(['step' => $user->isTotpEnabled() ? '2fa' : '2fa-setup']);
+        }
+
+        $session->remove(self::SESSION_FIRST_FACTOR_AT);
+        $session->set(self::SESSION_AUTHENTICATED_AT, time());
+        $this->auditLogger->log($user, 'login_success');
+
+        $response = new JsonResponse(['step' => 'done']);
+        // The device cookie is only granted to a fully authenticated browser.
+        $device = $this->devices->findValid($request, $user->getEmail());
         if (null === $device) {
             $this->devices->issue($user, $request, $response);
         } else {
