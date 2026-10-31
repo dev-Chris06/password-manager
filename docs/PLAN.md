@@ -447,20 +447,28 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 8 — Durcissement et déploiement (2 j)
 
-- [ ] CSP finale avec Trusted Types (section 4.6) vérifiée sur toutes les pages ; garde-fou CI.
-- [ ] **Archive de livraison** produite par la CI : `vendor/` sans dépendances de développement, `public/build/`, sans `node_modules`, avec sommes de contrôle.
-- [ ] **Guide mutualisé** (`docs/deploy/mutualise.md`, Alwaysdata de référence) : PHP ≥ 8.3, racine web `public/`, SSH, variables, migrations, cron `app:purge`, `chmod 600 .env.local`, TLS de l'hébergeur.
-- [ ] **Guide VPS sans Docker** (`docs/deploy/vps.md` + `deploy/`) :
+- [x] CSP finale avec Trusted Types (section 4.6) vérifiée sur toutes les pages ; garde-fou CI.
+- [x] **Archive de livraison** produite par la CI : `vendor/` sans dépendances de développement, `public/build/`, sans `node_modules`, avec sommes de contrôle.
+- [x] **Guide mutualisé** (`docs/deploy/mutualise.md`, Alwaysdata de référence) : PHP ≥ 8.3, racine web `public/`, SSH, variables, migrations, cron `app:purge`, `chmod 600 .env.local`, TLS de l'hébergeur.
+- [x] **Guide VPS sans Docker** (`docs/deploy/vps.md` + `deploy/`) :
   - Debian stable, utilisateur système dédié ;
   - Caddy (TLS automatique, en-têtes), pool PHP-FPM dédié, MariaDB avec un utilisateur aux droits minimaux ;
   - pare-feu (`nftables`/`ufw`), `unattended-upgrades` ;
   - cron, sauvegarde chiffrée de la base ;
   - script `deploy/provision.sh` relu et idempotent.
-- [ ] Génération des secrets documentée (`php -r 'echo bin2hex(random_bytes(32));'`).
-- [ ] Vérification de la plateforme à chaque déploiement : `php tools/check-php-platform.php` exécuté avec la configuration de PHP-FPM (version corrigée, `session.upload_progress` désactivé) ; le déploiement s'arrête en cas d'échec.
-- [ ] Les deux guides sont **exécutés pour de vrai** au moins une fois (le VPS peut être loué pour une journée).
+- [x] Génération des secrets documentée (`php -r 'echo bin2hex(random_bytes(32));'`).
+- [x] Vérification de la plateforme à chaque déploiement : `php tools/check-php-platform.php` exécuté avec la configuration de PHP-FPM (version corrigée, `session.upload_progress` désactivé) ; le déploiement s'arrête en cas d'échec.
+- [ ] Les deux guides sont **exécutés pour de vrai** au moins une fois — **à faire par l'auteur** (nécessite un compte d'hébergement et un domaine) (le VPS peut être loué pour une journée).
 
 **Terminé quand** : l'application tourne sur les deux cibles depuis l'archive de la CI, et le score Mozilla Observatory / securityheaders.com est A+.
+
+**Écarts constatés lors de la réalisation** :
+- commande `app:check-deployment` (version corrigée de PHP, `session.upload_progress`, `APP_ENV`/`APP_DEBUG`, robustesse d'`APP_SECRET`, `DEFAULT_URI` en HTTPS, format d'`EXTENSION_ORIGIN`, base joignable, migrations à jour) appelée par `deploy/deploy.sh` ; la logique de version de PHP est partagée avec `tools/check-php-platform.php` (`App\Platform\PlatformRequirements`) ;
+- `deploy/deploy.sh` : déploiement par versions (`releases/`, lien `current` basculé atomiquement, cinq versions gardées), utilisable sur VPS comme sur mutualisé ;
+- `tools/package-release.sh` produit l'archive (sans outil ni dépendance de développement) et le zip de l'extension, avec sommes SHA-256 ; tâche CI `release` sur `main` ;
+- page d'erreur en français, sans information technique ; `Cache-Control: no-store` sur la page de l'application ;
+- vérifié localement : empaquetage, installation par `deploy.sh` dans un dossier temporaire, contrôle « Ready for production », puis réponses du serveur en mode production (en-têtes, cookie `__Host-` sécurisé, `vendor/` inaccessible) ;
+- non vérifiable sans hébergement réel : exécution des guides sur Alwaysdata et sur un VPS, score Mozilla Observatory / securityheaders.com.
 
 ### Phase 9 — Documentation, revue finale, présentation (1,5 j)
 

@@ -1,0 +1,17 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Erreur {{ status_code }} — Gestionnaire de mots de passe{% endblock %}
+{% block javascripts %}{% endblock %}
+
+{% block body %}
+    <header class="site-header">
+        <span class="brand">Gestionnaire de mots de passe</span>
+    </header>
+    <main id="app">
+        <section class="card">
+            <h1>{{ status_code == 404 ? 'Page introuvable' : 'Une erreur est survenue' }}</h1>
+            <p class="lead">{{ status_code == 404 ? 'Cette adresse n’existe pas.' : 'Réessayez dans quelques instants.' }}</p>
+            <p><a class="btn btn-primary" href="{{ path('home') }}">Retour au coffre</a></p>
+        </section>
+    </main>
+{% endblock %}

@@ -1,0 +1,3 @@
+# /etc/cron.d/password-manager — daily purge (journal > 90 days, expired sessions, old devices).
+MAILTO=""
+17 3 * * * pm-app cd /srv/password-manager/current && php bin/console app:purge --env=prod --no-interaction >> /srv/password-manager/shared/var/log/cron.log 2>&1
