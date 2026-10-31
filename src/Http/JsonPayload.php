@@ -52,6 +52,15 @@ final readonly class JsonPayload
         return $value;
     }
 
+    public function optionalString(string $key, int $maxLength = 255): ?string
+    {
+        if (!\array_key_exists($key, $this->data) || null === $this->data[$key] || '' === $this->data[$key]) {
+            return null;
+        }
+
+        return $this->string($key, $maxLength);
+    }
+
     public function int(string $key): int
     {
         $value = $this->data[$key] ?? null;

@@ -17,6 +17,10 @@ export function describeError(error: unknown): string {
       case 'session_expired':
       case 'unauthorized':
         return 'Votre session a expiré. Reconnectez-vous.';
+      case 'invalid_code':
+        return 'Code incorrect ou déjà utilisé. Attendez le code suivant de votre application.';
+      case 'forbidden':
+        return 'Vérification refusée : mot de passe maître ou Secret Key incorrect.';
       case 'invalid_payload':
         return 'Certaines informations saisies sont invalides.';
       default:

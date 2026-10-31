@@ -20,10 +20,12 @@ final class SessionController extends AbstractController
     public function __invoke(CsrfTokenManagerInterface $csrfTokenManager, Registration $registration): JsonResponse
     {
         $user = $this->getUser();
+        // Fully authenticated means both factors were verified.
+        $authenticated = $this->isGranted('ROLE_USER');
 
         return new JsonResponse([
-            'authenticated' => null !== $user,
-            'email' => $user?->getUserIdentifier(),
+            'authenticated' => $authenticated,
+            'email' => $authenticated ? $user?->getUserIdentifier() : null,
             'registrationOpen' => null === $user && $registration->isOpen(),
             'csrfToken' => $csrfTokenManager->getToken(ApiRequestSubscriber::CSRF_TOKEN_ID)->getValue(),
         ]);

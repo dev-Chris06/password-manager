@@ -1,11 +1,25 @@
 // Single-page vault application: screens and transitions between them.
 import { ApiClient } from './api';
-import { type DerivedLogin, login, type LoginResult, openVault, register, unlock, type UnlockedVault } from './auth';
+import {
+  completeSecondFactor,
+  confirmTwoFactorEnrollment,
+  type DerivedLogin,
+  login,
+  type LoginResult,
+  openVault,
+  register,
+  startTwoFactorEnrollment,
+  unlock,
+  type UnlockedVault,
+} from './auth';
 import { describeError } from './errors';
 import { loadSecretKey } from './secretKeyStore';
+import { backupCodesView } from './views/backupCodesView';
 import { kitView } from './views/kitView';
 import { loginView } from './views/loginView';
 import { registerView } from './views/registerView';
+import { secondFactorView } from './views/secondFactorView';
+import { twoFactorSetupView } from './views/twoFactorSetupView';
 import { vaultView } from './views/vaultView';
 
 export class App {
@@ -90,11 +104,56 @@ export class App {
   }
 
   private async afterLogin(result: LoginResult, derived: DerivedLogin): Promise<void> {
-    if (result.step !== 'done') {
-      throw new Error(`Unsupported login step: ${result.step}`);
+    switch (result.step) {
+      case 'done':
+        await this.finishLogin(derived);
+        return;
+      case '2fa':
+        this.showSecondFactor(derived);
+        return;
+      case '2fa-setup':
+        this.showTwoFactorSetup(derived);
+        return;
     }
+  }
+
+  private async finishLogin(derived: DerivedLogin): Promise<void> {
     this.unlocked = await openVault(this.api, derived);
     this.showVault();
+  }
+
+  private showSecondFactor(derived: DerivedLogin): void {
+    this.show(
+      secondFactorView({
+        describe: describeError,
+        onSubmit: async (answer) => {
+          await completeSecondFactor(this.api, answer);
+          await this.finishLogin(derived);
+        },
+        onCancel: () => this.logout(),
+      }),
+    );
+  }
+
+  private showTwoFactorSetup(derived: DerivedLogin): void {
+    this.show(
+      twoFactorSetupView({
+        describe: describeError,
+        start: () => startTwoFactorEnrollment(this.api, derived),
+        onConfirm: async (code) => {
+          const codes = await confirmTwoFactorEnrollment(this.api, code);
+          this.show(
+            backupCodesView({
+              email: derived.email,
+              codes,
+              describe: describeError,
+              onContinue: () => this.finishLogin(derived),
+            }),
+          );
+        },
+        onCancel: () => this.logout(),
+      }),
+    );
   }
 
   private showVault(): void {
@@ -106,6 +165,7 @@ export class App {
       vaultView({
         email: unlocked.email,
         entryCount: unlocked.vault.entries.length,
+        backupCodesRemaining: unlocked.vault.backupCodesRemaining,
         onLock: () => {
           this.lock();
         },

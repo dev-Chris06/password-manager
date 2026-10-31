@@ -24,6 +24,7 @@ Les numéros correspondent aux décisions D1–D17 de [PLAN.md](PLAN.md#2-décis
 | [015](#adr-015--présentation-par-readme-et-vidéo) | Présentation par README et vidéo | Acceptée |
 | [016](#adr-016--pas-déchéance) | Pas d'échéance | Acceptée |
 | [017](#adr-017--niveau-de-correctifs-php-imposé) | Niveau de correctifs PHP imposé | Acceptée |
+| [018](#adr-018--2fa-sans-scheb2fa-bundle) | 2FA sans `scheb/2fa-bundle` | Acceptée (précise ADR-005) |
 
 ---
 
@@ -66,6 +67,7 @@ Les numéros correspondent aux décisions D1–D17 de [PLAN.md](PLAN.md#2-décis
 - **Décision** : TOTP (RFC 6238) via `scheb/2fa-bundle`, obligatoire, 10 codes de secours hachés à usage unique ; le coffre n'est servi qu'après validation du second facteur. Secret TOTP chiffré au repos avec une clé serveur.
 - **Alternatives écartées** : WebAuthn (résistant au phishing mais complexe dans l'extension, ~+2,5 j) ; 2FA facultative.
 - **Conséquences** : le serveur détient un secret (TOTP) qui protège l'authentification, jamais le contenu du coffre ; commande CLI de réinitialisation en dernier recours.
+- **Mise en œuvre** : précisée par [ADR-018](#adr-018--2fa-sans-scheb2fa-bundle).
 
 ## ADR-006 — HIBP à la demande
 
@@ -153,3 +155,14 @@ Les numéros correspondent aux décisions D1–D17 de [PLAN.md](PLAN.md#2-décis
   - `public/.user.ini` désactive `session.upload_progress` (pris en compte par PHP-FPM/CGI, y compris sur mutualisé) ; la CI et le serveur de test utilisent le même réglage ;
   - l'application ne modifie jamais `session.serialize_handler` à l'exécution.
 - **Conséquences** : impossible d'installer les dépendances sur une version vulnérable ; un hébergeur ayant corrigé sans changer de numéro de version doit être vérifié manuellement. À réviser à chaque nouvelle publication de sécurité de PHP.
+
+## ADR-018 — 2FA sans `scheb/2fa-bundle`
+
+- **Date** : 2026-10-31 — **Statut** : Acceptée (précise ADR-005)
+- **Contexte** : `scheb/2fa-bundle` est pensé pour des formulaires HTML : il lit le code dans les paramètres POST, pas dans un corps JSON, et son parcours ne prévoit ni l'activation obligatoire en JSON, ni un secret chiffré au repos, ni nos codes de secours stockés en HMAC, ni notre limiteur de tentatives. L'intégrer aurait demandé d'en surcharger la plupart des composants.
+- **Décision** : utiliser `spomky-labs/otphp` (la bibliothèque TOTP sur laquelle repose `scheb/2fa-totp`) pour le calcul des codes, et un parcours en deux étapes fondé sur les rôles de Symfony :
+  - après la preuve, le jeton porte `ROLE_2FA_PENDING` (code attendu) ou `ROLE_2FA_SETUP` (activation obligatoire), qui n'ouvrent que les routes du second facteur ;
+  - le second facteur validé, `Security::login()` crée un jeton complet (`ROLE_USER`) via un badge dédié ;
+  - `User` implémente `EquatableInterface` pour que Symfony ne ferme pas la session intermédiaire en comparant les rôles.
+- **Alternatives écartées** : `scheb/2fa-bundle` avec adaptateurs JSON (davantage de code d'intégration que de code utile) ; TOTP entièrement maison (algorithme simple mais `otphp` est maintenu et éprouvé).
+- **Conséquences** : environ 300 lignes de code applicatif couvertes par des tests (vecteurs RFC 6238, anti-rejeu, fenêtre de ±1 période, codes à usage unique, limiteur, délai de 5 minutes) ; aucune dépendance « bundle ».

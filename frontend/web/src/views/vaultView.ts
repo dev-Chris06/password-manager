@@ -1,8 +1,9 @@
-import { el } from '../dom';
+import { alertBox, el } from '../dom';
 
 export interface VaultViewOptions {
   email: string;
   entryCount: number;
+  backupCodesRemaining: number;
   onLock: () => void;
   onLogout: () => Promise<void>;
 }
@@ -13,6 +14,9 @@ export function vaultView(options: VaultViewOptions): HTMLElement {
     'section',
     { className: 'card' },
     el('h1', {}, 'Coffre déverrouillé'),
+    options.backupCodesRemaining <= 3
+      ? alertBox('warning', `Il ne vous reste que ${String(options.backupCodesRemaining)} code(s) de secours : régénérez-les depuis les paramètres de sécurité.`)
+      : null,
     el('p', { attrs: { 'data-testid': 'vault-status' } }, `Connecté en tant que ${options.email} — ${String(options.entryCount)} entrée(s).`),
     el('div', { className: 'actions' },
       el('button', { className: 'btn btn-secondary', attrs: { type: 'button' }, on: { click: options.onLock } }, 'Verrouiller'),
