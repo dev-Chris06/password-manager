@@ -1,4 +1,5 @@
 // Single-page vault application: screens and transitions between them.
+import { changeMasterPassword, UnreadableEntriesError } from './account';
 import { ApiClient, ApiError } from './api';
 import {
   completeSecondFactor,
@@ -14,7 +15,9 @@ import {
   type UnlockedVault,
 } from './auth';
 import { startAutoLock } from './autoLock';
+import { downloadFile, exportBackup, importBackup } from './backupFile';
 import { describeError } from './errors';
+import { findBreachedEntries } from './hibp';
 import { loadSecretKey } from './secretKeyStore';
 import { VaultStore, VersionConflictError } from './vaultStore';
 import { backupCodesView } from './views/backupCodesView';
@@ -24,6 +27,7 @@ import { kitView } from './views/kitView';
 import { loginView } from './views/loginView';
 import { registerView } from './views/registerView';
 import { secondFactorView } from './views/secondFactorView';
+import { backupSection, breachSection, masterPasswordSection } from './views/settingsSections';
 import { settingsView } from './views/settingsView';
 import { twoFactorSetupView } from './views/twoFactorSetupView';
 import { vaultView } from './views/vaultView';
@@ -66,6 +70,9 @@ export class App {
     }
     if (error instanceof VersionConflictError) {
       return 'Cette entrée a été modifiée ailleurs entre-temps : la liste a été rechargée, recommencez la modification.';
+    }
+    if (error instanceof UnreadableEntriesError) {
+      return 'Des entrées illisibles empêchent de renouveler la clé du coffre. Supprimez-les d’abord.';
     }
     return describeError(error);
   };
@@ -177,12 +184,12 @@ export class App {
 
   // --- Unlocked vault ----------------------------------------------------------------------
 
-  private async enterVault(unlocked: UnlockedVault): Promise<void> {
+  private async enterVault(unlocked: UnlockedVault, notice?: string): Promise<void> {
     this.close();
     const store = new VaultStore(this.api, unlocked.vaultKey);
     await store.load(unlocked.vault);
     this.open = { unlocked, store, stopAutoLock: startAutoLock(() => { this.lock(); }) };
-    this.showVault();
+    this.showVault(notice);
   }
 
   private showVault(notice?: string): void {
@@ -246,10 +253,43 @@ export class App {
     if (open === null) {
       return;
     }
+    const email = open.unlocked.email;
     this.show(
       settingsView({
         describe: this.describe,
         onBack: () => { this.showVault(); },
+        sections: [
+          masterPasswordSection(
+            email,
+            async (change) => {
+              const { unlocked, secretKeyText } = await changeMasterPassword(this.api, open.store, email, change);
+              if (change.newSecretKey) {
+                this.close();
+                this.show(kitView({
+                  email,
+                  secretKeyText,
+                  describe: describeError,
+                  onContinue: () => this.enterVault(unlocked, 'Mot de passe maître et Secret Key changés.'),
+                }));
+              } else {
+                await this.enterVault(unlocked, change.rotateVaultKey ? 'Mot de passe maître changé et coffre rechiffré.' : 'Mot de passe maître changé.');
+              }
+            },
+            this.describe,
+          ),
+          backupSection(
+            async (masterPassword) => {
+              const { fileName, content } = await exportBackup(this.api, masterPassword);
+              downloadFile(fileName, content);
+            },
+            async (content, masterPassword, secretKeyText) => {
+              const { imported, skipped } = await importBackup(open.store, content, masterPassword, secretKeyText, email);
+              this.showVault(`${String(imported)} entrée(s) importée(s), ${String(skipped)} déjà présente(s) ignorée(s).`);
+            },
+            this.describe,
+          ),
+          breachSection(() => findBreachedEntries(open.store.list()), this.describe),
+        ],
         onRegenerateBackupCodes: async (masterPassword, totpCode) => {
           const { authProof } = await reauthenticate(open.unlocked.vault, masterPassword);
           const { backupCodes } = await this.api.post<{ backupCodes: string[] }>('/api/2fa/backup-codes', { authProof, code: totpCode });

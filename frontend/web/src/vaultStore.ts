@@ -9,6 +9,8 @@ import {
 import { ApiError, type ApiClient } from './api';
 import type { EncryptedEntry, VaultResponse } from './auth';
 
+const IMPORT_BATCH_SIZE = 200;
+
 export interface VaultItem {
   readonly uuid: string;
   readonly data: EntryData;
@@ -113,6 +115,32 @@ export class VaultStore {
       }
     }
     this.items.delete(uuid);
+  }
+
+  /**
+   * Adds entries coming from a backup: re-encrypted with the current vault key under new UUIDs,
+   * sent in batches. Entries with the same site and username as an existing one are skipped.
+   */
+  async importEntries(entries: readonly EntryData[]): Promise<{ imported: number; skipped: number }> {
+    const key = (data: EntryData): string => `${data.site.toLowerCase()}\u0000${data.username.toLowerCase()}`;
+    const known = new Set(this.list().map((item) => key(item.data)));
+    const pending: { uuid: string; ciphertext: string }[] = [];
+    let skipped = 0;
+    for (const data of entries) {
+      const normalized = normalizeEntry(data);
+      if (known.has(key(normalized))) {
+        skipped++;
+        continue;
+      }
+      known.add(key(normalized));
+      const uuid = newEntryUuid();
+      pending.push({ uuid, ciphertext: await encryptEntry(this.vaultKey, uuid, normalized) });
+    }
+    for (let i = 0; i < pending.length; i += IMPORT_BATCH_SIZE) {
+      await this.api.post('/api/entries/batch', { entries: pending.slice(i, i + IMPORT_BATCH_SIZE) });
+    }
+    await this.reload();
+    return { imported: pending.length, skipped };
   }
 
   /** Forgets every decrypted value (lock, logout). */

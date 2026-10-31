@@ -126,7 +126,7 @@ test('the journal lists the account activity and backup codes can be renewed', a
   await page.getByRole('button', { name: 'Retour au coffre' }).click();
 
   await page.getByRole('button', { name: 'Paramètres' }).click();
-  await page.getByLabel('Mot de passe maître').fill(MASTER_PASSWORD);
+  await page.getByLabel('Mot de passe maître (pour les codes)').fill(MASTER_PASSWORD);
   await page.getByLabel('Code de l’application d’authentification').fill(totp(totpSecret, 1));
   await page.getByRole('button', { name: 'Régénérer les codes de secours' }).click();
   await expect(page.getByRole('heading', { name: 'Vos codes de secours' })).toBeVisible({ timeout: 30_000 });
