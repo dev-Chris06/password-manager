@@ -90,6 +90,7 @@ DATABASE_URL="mysql://${DB_USER}:${DB_PASSWORD}@localhost:3306/${DB_NAME}?server
 DEFAULT_URI=https://${DOMAIN}
 TRUSTED_PROXIES=
 EXTENSION_ORIGIN=chrome-extension://nfnbankmkanaglimeogpgljgpkpdbenl
+REGISTRATION_CODE=$(openssl rand -hex 12)
 ENV
   chmod 600 "$APP_DIR/shared/.env.local"
   chown "$APP_USER:$APP_USER" "$APP_DIR/shared/.env.local"
@@ -114,5 +115,7 @@ MAILTO=""
 CRON
 
 echo
+echo "Registration code (asked when creating the account, then useless):"
+grep '^REGISTRATION_CODE=' "$APP_DIR/shared/.env.local" | cut -d= -f2
 echo "Provisioning done. Deploy a release archive with:"
 echo "  sudo -u ${APP_USER} bash deploy/deploy.sh password-manager-<version>.tar.gz"

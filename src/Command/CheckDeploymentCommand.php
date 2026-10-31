@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Platform\PlatformRequirements;
+use App\Service\Registration;
 use Doctrine\DBAL\Connection;
 use Doctrine\Migrations\DependencyFactory;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -36,6 +37,7 @@ final class CheckDeploymentCommand extends Command
         #[Autowire('%kernel.project_dir%')] private readonly string $projectDir,
         #[Autowire('%env(default::DEFAULT_URI)%')] private readonly ?string $defaultUri,
         #[Autowire('%env(default::EXTENSION_ORIGIN)%')] private readonly ?string $extensionOrigin,
+        private readonly Registration $registration,
     ) {
         parent::__construct();
     }
@@ -70,6 +72,8 @@ final class CheckDeploymentCommand extends Command
             $status = $this->migrations->getMigrationStatusCalculator();
             if (\count($status->getNewMigrations()) > 0) {
                 $errors[] = 'Database migrations are pending: run bin/console doctrine:migrations:migrate.';
+            } elseif ($this->registration->isOpen() && !$this->registration->requiresCode()) {
+                $errors[] = 'No account exists yet and REGISTRATION_CODE is empty: anyone could claim this instance. Set a random REGISTRATION_CODE.';
             }
         } catch (\Throwable) {
             $errors[] = 'The database cannot be reached with DATABASE_URL.';

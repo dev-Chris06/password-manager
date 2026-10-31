@@ -16,6 +16,7 @@ export interface SessionState {
   authenticated: boolean;
   email: string | null;
   registrationOpen: boolean;
+  registrationCodeRequired: boolean;
   csrfToken: string;
 }
 

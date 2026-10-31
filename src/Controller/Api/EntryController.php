@@ -10,6 +10,7 @@ use App\Http\JsonPayload;
 use App\Repository\VaultEntryRepository;
 use App\Security\ApiRequestSubscriber;
 use App\Service\AuditLogger;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -57,7 +58,12 @@ final class EntryController extends AbstractController
 
         $entry = new VaultEntry($uuid, $user, $ciphertext);
         $this->entityManager->persist($entry);
-        $this->entityManager->flush();
+        try {
+            $this->entityManager->flush();
+        } catch (UniqueConstraintViolationException) {
+            // Two simultaneous creations with the same UUID.
+            return ApiRequestSubscriber::error(409, 'conflict');
+        }
         $this->auditLogger->log($user, 'entry_created', $uuid->toRfc4122());
 
         return new JsonResponse(self::summary($entry), 201);
@@ -75,6 +81,10 @@ final class EntryController extends AbstractController
             $items[] = [self::uuid($item->string('uuid', 36)), $item->base64('ciphertext', self::MAX_CIPHERTEXT_BYTES, exact: false)];
         }
 
+        $uuids = array_map(static fn (array $item): string => $item[0]->toRfc4122(), $items);
+        if (\count(array_unique($uuids)) !== \count($uuids)) {
+            return ApiRequestSubscriber::error(409, 'conflict');
+        }
         if ($this->entries->count(['user' => $user]) + \count($items) > self::MAX_ENTRIES_PER_USER) {
             return ApiRequestSubscriber::error(422, 'quota_exceeded');
         }
@@ -85,13 +95,17 @@ final class EntryController extends AbstractController
         }
 
         $created = [];
-        $this->entityManager->wrapInTransaction(function () use ($items, $user, &$created): void {
-            foreach ($items as [$uuid, $ciphertext]) {
-                $entry = new VaultEntry($uuid, $user, $ciphertext);
-                $this->entityManager->persist($entry);
-                $created[] = $entry;
-            }
-        });
+        try {
+            $this->entityManager->wrapInTransaction(function () use ($items, $user, &$created): void {
+                foreach ($items as [$uuid, $ciphertext]) {
+                    $entry = new VaultEntry($uuid, $user, $ciphertext);
+                    $this->entityManager->persist($entry);
+                    $created[] = $entry;
+                }
+            });
+        } catch (UniqueConstraintViolationException) {
+            return ApiRequestSubscriber::error(409, 'conflict');
+        }
         $this->auditLogger->log($user, 'entries_imported', \sprintf('%d entries', \count($created)));
 
         return new JsonResponse(['entries' => array_map(self::summary(...), $created)], 201);

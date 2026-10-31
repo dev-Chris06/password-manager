@@ -3,8 +3,10 @@
 framework:
     cache:
         pools:
+            # Stored under var/rate_limiter, outside the cache directory: clearing the cache
+            # (at every deployment) must not reset the counters.
             cache.rate_limiter:
-                adapter: cache.adapter.filesystem
+                adapter: app.cache.adapter.persistent_filesystem
 
     rate_limiter:
         login_pair_short:  { policy: sliding_window, limit: 5,   interval: '15 minutes', cache_pool: cache.rate_limiter }

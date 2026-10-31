@@ -1,17 +1,39 @@
 // Which vault entries may be filled on which page (docs/PLAN.md phase 7).
 
-/** Host name of a site as typed in an entry ("https://www.example.com/login" → "example.com"). */
-export function siteHost(site: string): string | null {
+/**
+ * Public suffixes made of two labels, frequent enough to deserve a guard: an entry for one of them
+ * must never cover all its subdomains. (A complete Public Suffix List is not bundled.)
+ */
+const MULTI_LABEL_PUBLIC_SUFFIXES = new Set([
+  'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'ne.jp',
+  'com.br', 'com.mx', 'com.ar', 'com.tr', 'co.za', 'co.in', 'co.kr', 'com.cn', 'com.tw', 'com.sg',
+  'gouv.fr', 'asso.fr', 'co.ma', 'com.tn', 'github.io', 'gitlab.io', 'netlify.app', 'vercel.app',
+  'herokuapp.com', 'pages.dev', 'workers.dev', 'blogspot.com', 'azurewebsites.net', 'cloudfront.net',
+]);
+
+interface SiteAddress {
+  readonly host: string;
+  /** Explicit port of the entry, or '' for the default port of the scheme. */
+  readonly port: string;
+}
+
+/** Address of a site as typed in an entry ("https://www.example.com:8443/login" → example.com, 8443). */
+export function siteAddress(site: string): SiteAddress | null {
   const trimmed = site.trim().toLowerCase();
   if (trimmed === '') {
     return null;
   }
   try {
     const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`);
-    return stripWww(url.hostname);
+    return { host: stripWww(url.hostname), port: url.port };
   } catch {
     return null;
   }
+}
+
+/** Host name of a site as typed in an entry ("https://www.example.com/login" → "example.com"). */
+export function siteHost(site: string): string | null {
+  return siteAddress(site)?.host ?? null;
 }
 
 function stripWww(host: string): string {
@@ -19,19 +41,24 @@ function stripWww(host: string): string {
 }
 
 /**
- * Exact host match by default; subdomains only when the entry allows it. A one-label site
- * (e.g. "com") never matches subdomains, so an entry cannot cover a whole top-level domain.
+ * Exact host (and port) match by default; subdomains only when the entry allows it, and never
+ * below a one-label name ("com") or a known public suffix ("co.uk", "github.io"…).
  */
-export function entryMatchesHost(site: string, includeSubdomains: boolean, pageHost: string): boolean {
-  const entryHost = siteHost(site);
-  const host = stripWww(pageHost.toLowerCase());
-  if (entryHost === null || host === '') {
+export function entryMatchesHost(site: string, includeSubdomains: boolean, page: URL): boolean {
+  const entry = siteAddress(site);
+  const host = stripWww(page.hostname.toLowerCase());
+  if (entry === null || host === '' || entry.port !== page.port) {
     return false;
   }
-  if (entryHost === host) {
+  if (entry.host === host) {
     return true;
   }
-  return includeSubdomains && entryHost.includes('.') && host.endsWith(`.${entryHost}`);
+  return (
+    includeSubdomains &&
+    entry.host.includes('.') &&
+    !MULTI_LABEL_PUBLIC_SUFFIXES.has(entry.host) &&
+    host.endsWith(`.${entry.host}`)
+  );
 }
 
 /** Only HTTPS pages (and local development over HTTP) can receive credentials. */

@@ -24,7 +24,7 @@ Référence : **Alwaysdata** (PHP 8.3+, MariaDB ou MySQL, SSH, cron, HTTPS fourn
    ```
 
    Certains hébergeurs appliquent les correctifs sans changer le numéro de version : en cas de doute, demander confirmation au support.
-3. Activer le **certificat HTTPS** (Let's Encrypt) et la redirection HTTP → HTTPS.
+3. Activer le **certificat HTTPS** (Let's Encrypt) et la **redirection HTTP → HTTPS** dans le panneau de l'hébergeur (l'application ne la fait pas elle-même, voir `public/.htaccess`).
 
 ## 2. Installer la version
 
@@ -47,7 +47,12 @@ DATABASE_URL="mysql://UTILISATEUR:MOT_DE_PASSE@mysql-compte.alwaysdata.net:3306/
 DEFAULT_URI=https://coffre.exemple.fr
 TRUSTED_PROXIES=
 EXTENSION_ORIGIN=chrome-extension://nfnbankmkanaglimeogpgljgpkpdbenl
+REGISTRATION_CODE=<résultat de : php -r 'echo bin2hex(random_bytes(12));'>
 ```
+
+`REGISTRATION_CODE` est demandé à la création du compte : sans lui, la première personne qui ouvrirait le site fraîchement installé pourrait créer le compte unique à votre place. `app:check-deployment` refuse un déploiement sans compte et sans code.
+
+Si l'hébergeur termine le HTTPS sur un proxy (cas d'Alwaysdata), renseigner `TRUSTED_PROXIES` avec l'adresse de ce proxy, ou `private_ranges` si l'hébergeur l'indique : sinon l'application ne sait pas que la connexion est chiffrée (HSTS).
 
 ```bash
 chmod 600 shared/.env.local
@@ -86,7 +91,7 @@ cd ~/password-manager/current && php bin/console app:purge --env=prod --no-inter
 - [ ] `https://coffre.exemple.fr` affiche l'écran de création du coffre.
 - [ ] `https://coffre.exemple.fr/.env.local` et `/vendor/autoload.php` répondent 403 ou 404.
 - [ ] [securityheaders.com](https://securityheaders.com) et [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory) donnent **A+**.
-- [ ] Créer le compte, activer la double authentification, **imprimer le kit de secours**.
+- [ ] Créer le compte avec le code d'inscription, activer la double authentification, **imprimer le kit de secours**.
 - [ ] Exporter une sauvegarde et la ranger hors du serveur.
 
 ## Mise à jour

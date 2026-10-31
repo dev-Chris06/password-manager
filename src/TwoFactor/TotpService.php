@@ -87,8 +87,15 @@ final readonly class TotpService
             return false;
         }
 
+        // Atomic claim of the time step: two parallel requests cannot both use the same code.
+        $claimed = $this->entityManager->getConnection()->executeStatement(
+            'UPDATE app_user SET totp_last_counter = ? WHERE id = ? AND (totp_last_counter IS NULL OR totp_last_counter < ?)',
+            [$counter, $user->getId(), $counter],
+        );
+        if (1 !== $claimed) {
+            return false;
+        }
         $user->setTotpLastCounter($counter);
-        $this->entityManager->flush();
 
         return true;
     }

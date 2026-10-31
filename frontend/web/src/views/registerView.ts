@@ -3,11 +3,19 @@ import { estimateStrength, masterPasswordProblems } from '../passwordPolicy';
 import { bindForm, button, card, input } from './common';
 
 export interface RegisterViewOptions {
-  onSubmit: (email: string, masterPassword: string) => Promise<void>;
+  /** The server requires the registration code set by its owner. */
+  codeRequired: boolean;
+  onSubmit: (email: string, masterPassword: string, registrationCode: string | undefined) => Promise<void>;
   describe: (error: unknown) => string;
 }
 
 export function registerView(options: RegisterViewOptions): HTMLElement {
+  const code = field(
+    'Code d’inscription',
+    input('text', 'registration-code', { autocomplete: 'off', spellcheck: 'false', required: true }),
+    'Défini par le propriétaire du serveur (REGISTRATION_CODE) : il empêche un inconnu de créer le compte à votre place.',
+  );
+  code.wrapper.hidden = !options.codeRequired;
   const email = field('Adresse email', input('email', 'email', { autocomplete: 'username', required: true, maxlength: '180' }));
   const password = field(
     'Mot de passe maître',
@@ -37,6 +45,7 @@ export function registerView(options: RegisterViewOptions): HTMLElement {
   const form = el(
     'form',
     { attrs: { novalidate: true } },
+    code.wrapper,
     email.wrapper,
     password.wrapper,
     el('div', { className: 'strength' }, meter, meterLabel),
@@ -61,7 +70,10 @@ export function registerView(options: RegisterViewOptions): HTMLElement {
       if (password.input.value !== confirmation.input.value) {
         throw new FormError('Les deux mots de passe ne correspondent pas.');
       }
-      await options.onSubmit(email.input.value.trim().toLowerCase(), password.input.value);
+      if (options.codeRequired && code.input.value.trim() === '') {
+        throw new FormError('Saisissez le code d’inscription.');
+      }
+      await options.onSubmit(email.input.value.trim().toLowerCase(), password.input.value, options.codeRequired ? code.input.value.trim() : undefined);
     },
     (error) => (error instanceof FormError ? error.message : options.describe(error)),
   );

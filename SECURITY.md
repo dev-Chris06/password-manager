@@ -47,25 +47,28 @@ Dans la limite du possible, on **ne divulgue la faille** publiquement qu'après 
 
 ## 2. Périmètre pris en charge (in scope)
 
-> ⚠️ Le projet est en **refonte complète** vers une architecture zero-knowledge (voir [docs/PLAN.md](docs/PLAN.md)). Ce périmètre et les limites ci-dessous seront réécrits à la phase 9.
+Architecture et modèle de menace : [docs/MENACE.md](docs/MENACE.md).
 
-Sont considérés **"en scope"** pour la sécurité :
-- Code serveur Symfony : `src/`, `config/`, `templates/`, `public/index.php`
+Sont considérés **"en scope"** :
+- Code serveur Symfony : `src/`, `config/`, `templates/`, `public/`
 - Code client : `frontend/` (module crypto partagé et application du coffre)
 - Extension Chrome MV3 : `extension/`
 - Scripts de build et de déploiement : `tools/`, `deploy/`
 
+Sont particulièrement recherchés : toute fuite d'un secret vers le serveur, un contournement du second facteur, un accès aux entrées d'un autre compte, une faiblesse de la cryptographie côté client, un remplissage de l'extension sur un mauvais domaine.
+
 **Sont HORS scope (ne pas signaler sauf impact grave démontré)** :
 - Documentation Markdown hors code
 - L'état antérieur à la refonte (tag `avant-refonte`), qui n'est plus maintenu
-- Faille qui nécessite déjà un accès administrateur au serveur
+- Faille qui nécessite déjà un accès administrateur au serveur ou au poste client
 - Attaques physiques sur la machine utilisateur
+- Absence de limitation sur une installation non conforme aux guides de déploiement
 
 ---
 
 ## 3. Limites connues — ce qu'on considère "acceptable" (ne pas signaler)
 
-Ces limites sont détaillées dans [docs/PLAN.md §7](docs/PLAN.md#7-limites-acceptées) et le seront dans le futur modèle de menace :
+Détaillées dans [docs/MENACE.md §3](docs/MENACE.md#3-limites-acceptées) :
 
 | Limite |
 |---|

@@ -71,7 +71,7 @@ final class ProofAuthenticator extends AbstractAuthenticator
         $request->attributes->set(self::ATTRIBUTE_EMAIL, $email);
         $request->attributes->set(self::ATTRIBUTE_DEVICE, $device);
 
-        $blockedUntil = $this->throttler->blockedUntil($email, $ip, $deviceKey);
+        $blockedUntil = $this->throttler->attempt($email, $ip, $deviceKey);
         if (null !== $blockedUntil) {
             throw new TooManyAttemptsException($blockedUntil);
         }
@@ -120,6 +120,8 @@ final class ProofAuthenticator extends AbstractAuthenticator
         if (\in_array(self::ROLE_PENDING, $token->getRoleNames(), true) || \in_array(self::ROLE_SETUP, $token->getRoleNames(), true)) {
             $device = $request->attributes->get(self::ATTRIBUTE_DEVICE);
             $this->throttler->recordSuccess($user->getEmail(), (string) $request->getClientIp(), $device instanceof TrustedDevice ? TrustedDeviceManager::limiterKey($device) : null);
+            // A previous complete login of this session must not extend the half-open one.
+            $session->remove(self::SESSION_AUTHENTICATED_AT);
             $session->set(self::SESSION_FIRST_FACTOR_AT, time());
             $this->auditLogger->log($user, 'login_first_factor');
 
@@ -154,10 +156,8 @@ final class ProofAuthenticator extends AbstractAuthenticator
             return $response;
         }
 
+        // The attempt was already counted by LoginThrottler::attempt().
         if (\is_string($email)) {
-            $device = $request->attributes->get(self::ATTRIBUTE_DEVICE);
-            $deviceKey = $device instanceof TrustedDevice ? TrustedDeviceManager::limiterKey($device) : null;
-            $this->throttler->recordFailure($email, (string) $request->getClientIp(), $deviceKey);
             $this->auditLogger->log($this->users->findOneBy(['email' => $email]), 'login_failure', AuditLogger::maskEmail($email));
         }
 

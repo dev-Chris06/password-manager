@@ -3,6 +3,7 @@
 import type { KdfParameters } from '../../packages/crypto/src';
 
 const SECRET_KEY_PREFIX = 'pm:secret-key:';
+const PENDING_SECRET_KEY_PREFIX = 'pm:secret-key-pending:';
 const KDF_PREFIX = 'pm:kdf:';
 
 function read(key: string): string | null {
@@ -34,6 +35,36 @@ export function forgetSecretKey(email: string): void {
     localStorage.removeItem(SECRET_KEY_PREFIX + email);
   } catch {
     // Nothing to forget.
+  }
+}
+
+/**
+ * A new Secret Key is kept as "pending" from the moment it is sent to the server until the change
+ * is confirmed: if the answer is lost, the next login falls back to it instead of locking the
+ * owner out.
+ */
+export function savePendingSecretKey(email: string, secretKeyText: string): void {
+  write(PENDING_SECRET_KEY_PREFIX + email, secretKeyText);
+}
+
+export function loadPendingSecretKey(email: string): string | null {
+  return read(PENDING_SECRET_KEY_PREFIX + email);
+}
+
+export function forgetPendingSecretKey(email: string): void {
+  try {
+    localStorage.removeItem(PENDING_SECRET_KEY_PREFIX + email);
+  } catch {
+    // Nothing to forget.
+  }
+}
+
+/** The pending Secret Key turned out to be the right one: it becomes the current one. */
+export function promotePendingSecretKey(email: string): void {
+  const pending = loadPendingSecretKey(email);
+  if (pending !== null) {
+    saveSecretKey(email, pending);
+    forgetPendingSecretKey(email);
   }
 }
 

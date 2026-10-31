@@ -7,12 +7,10 @@ DirectoryIndex index.php
     Require all denied
 </FilesMatch>
 
+# HTTPS is forced by the hosting panel (TLS often ends at the host's proxy, where a redirect
+# written here could loop or be skipped with a forged X-Forwarded-Proto). See docs/deploy/.
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    # Force HTTPS (the session cookie requires it in production).
-    RewriteCond %{HTTPS} !=on
-    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
-    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
     # Pass the Authorization header and route everything else to the front controller.
     RewriteCond %{HTTP:Authorization} .+
     RewriteRule ^ - [E=HTTP_AUTHORIZATION:%0]

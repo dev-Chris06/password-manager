@@ -186,3 +186,29 @@ test('the breach check only sends hash prefixes to Have I Been Pwned', async ({ 
   await expect(page.getByTestId('breach-results')).toContainText('leaked.example');
   expect(requested).toEqual(['https://api.pwnedpasswords.com/range/5BAA6']);
 });
+
+test('a Secret Key change whose answer is lost does not lock the owner out', async ({ page }) => {
+  const { totpSecret } = await registerThroughUi(page);
+  await addEntryThroughUi(page, { site: 'lost-answer.example', username: 'l', password: 'Lost-Answer-Pass-6' });
+
+  // The server applies the change, but the answer never reaches the browser.
+  await page.route('**/api/account/password', async (route) => {
+    await route.fetch();
+    await route.abort('connectionreset');
+  });
+  await changePassword(page, { newSecretKey: true });
+  await expect(page.getByRole('heading', { name: 'Conservez votre kit de secours' })).toBeVisible({ timeout: 30_000 });
+  await page.getByLabel('J’ai imprimé ou enregistré mon kit de secours en lieu sûr.').check();
+  await page.getByRole('button', { name: 'Continuer' }).click();
+  await expect(page.getByRole('alert')).toContainText('n’a pas confirmé le changement', { timeout: 30_000 });
+  await page.unroute('**/api/account/password');
+
+  // The lost answer also carried the renewed session cookie: the browser never got it.
+  await page.context().clearCookies();
+
+  // The device kept the new Secret Key aside: logging in with the new password just works.
+  await page.goto('/');
+  await loginThroughUi(page, { password: NEW_PASSWORD });
+  await passSecondFactor(page, { totpSecret });
+  await expect(page.getByTestId('entries')).toContainText('lost-answer.example', { timeout: 30_000 });
+});

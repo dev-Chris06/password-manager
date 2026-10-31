@@ -22,6 +22,7 @@ const MESSAGES: Record<string, string> = {
   session_expired: 'Session expirée : déverrouillez à nouveau.',
   unauthorized: 'Session expirée : déverrouillez à nouveau.',
   locked: 'Coffre verrouillé.',
+  vault_key_changed: 'La clé du coffre a été renouvelée depuis l’application : déverrouillez à nouveau.',
   domain_mismatch: 'Cette entrée ne correspond pas au site ouvert.',
   'no-password-field': 'Aucun champ de mot de passe visible sur cette page.',
   'hidden-field': 'Le champ de mot de passe est masqué ou recouvert : remplissage refusé.',
@@ -201,7 +202,7 @@ async function showEntries(status: Status): Promise<void> {
   const response = await send({ type: 'entries-for-tab', tabId });
   if (!response.ok) {
     header.replaceChildren(message('error', describe(response)));
-    if (response.error === 'unauthorized' || response.error === 'locked') {
+    if (response.error === 'unauthorized' || response.error === 'locked' || response.error === 'vault_key_changed') {
       window.setTimeout(() => { void render(); }, 1500);
     }
     return;
