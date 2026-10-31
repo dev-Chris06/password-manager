@@ -95,7 +95,7 @@ wrapped_vault_key = AES-256-GCM(wrap_key, vault_key, AAD="pm-vault-key-v1")
 Serveur : salt, paramètres KDF, hash(auth_proof) via PasswordHasher, wrapped_vault_key
 ```
 
-- **Format de la Secret Key** : `A1-XXXXXX-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXXX` (préfixe de version, puis 128 bits en base32 Crockford, avec un caractère de contrôle). Elle est stockée dans le `localStorage` de chaque navigateur utilisé et dans `chrome.storage.local` pour l'extension.
+- **Format de la Secret Key** : `A1-XXXXXX-XXXXXX-XXXXX-XXXXX-XXXXX` (préfixe de version, 128 bits en 26 chiffres base32 Crockford, puis un symbole de contrôle modulo 37). Elle est stockée dans le `localStorage` de chaque navigateur utilisé et dans `chrome.storage.local` pour l'extension.
 - **Kit de secours** : une page imprimable générée côté client contient l'adresse du serveur, l'email, la Secret Key et un champ vide pour écrire le mot de passe maître à la main. L'utilisateur l'imprime ou l'enregistre en PDF via le navigateur.
 - **Planchers côté client** : le client refuse tout paramètre KDF inférieur à m = 64 MiB et t = 3 (protection contre une baisse imposée par un serveur malveillant). L'extension mémorise les paramètres déjà vus et alerte s'ils baissent.
 - **Clé de coffre non exportable** : en usage normal, `vault_key` est importée avec `extractable: false`. Seuls le changement de mot de passe et le renouvellement de la clé la déballent temporairement en mode exportable.
@@ -300,13 +300,13 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 **Fichiers** : `frontend/packages/crypto/` (TypeScript, aucune dépendance hors `hash-wasm`), importé par le web et l'extension.
 
 **API du module** :
-- [ ] `generateSalt`, `generateSecretKey`, `formatSecretKey`, `parseSecretKey` (avec caractère de contrôle) ;
-- [ ] `deriveMaster(password, secretKey, salt, params)` : Argon2id + HKDF + XOR ;
-- [ ] `assertKdfFloor(params)` : planchers de la section 4.2 ;
-- [ ] `deriveSubkeys(master)` → `{ wrapKey (non exportable), authProof }` ;
-- [ ] `generateVaultKey`, `wrapVaultKey`, `unwrapVaultKey(…, { extractable })` ;
-- [ ] `encryptEntry(vaultKey, uuid, data)` / `decryptEntry(…)` (format de la section 4.3) ;
-- [ ] `buildBackup` / `openBackup` (format `pm-backup-v2`).
+- [x] `generateSalt`, `generateSecretKey`, `formatSecretKey`, `parseSecretKey` (avec caractère de contrôle) ;
+- [x] `deriveMaster(password, secretKey, salt, params)` : Argon2id + HKDF + XOR ;
+- [x] `assertKdfFloor(params)` : planchers de la section 4.2 ;
+- [x] `deriveSubkeys(master)` → `{ wrapKey (non exportable), authProof }` ;
+- [x] `generateVaultKey`, `wrapVaultKey`, `unwrapVaultKey(…, { extractable })` ;
+- [x] `encryptEntry(vaultKey, uuid, data)` / `decryptEntry(…)` (format de la section 4.3) ;
+- [x] `buildBackup` / `openBackup` (format `pm-backup-v2`).
 
 **Tests (Vitest)** :
 - vecteurs officiels Argon2id (RFC 9106) et HKDF (RFC 5869) ;
@@ -317,6 +317,14 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 - `authProof` différente de tout autre matériau de clé.
 
 **Justification** : tout le reste du projet repose sur ce module. Il doit être isolé, sans dépendance au DOM et testé de façon exhaustive avant tout usage.
+
+**Écarts constatés lors de la réalisation** :
+- Secret Key au format `A1-XXXXXX-XXXXXX-XXXXX-XXXXX-XXXXX` : 26 chiffres base32 Crockford + 1 symbole de contrôle (modulo 37), soit 5 groupes ;
+- l'en-tête de la sauvegarde n'est pas authentifié séparément : les paramètres KDF sont des entrées de la dérivation, toute modification change la clé d'enveloppe et le déchiffrement échoue (testé) ;
+- champ `ciphertext` (et non `blob`), aligné sur la colonne du serveur ;
+- catégories stockées sous forme de codes anglais (`social`, `email`, `bank`, `school`, `work`, `shopping`, `other`), traduites dans l'interface ;
+- vecteurs Argon2id : suite de tests de l'implémentation de référence (`phc-winner-argon2`) et libsodium (`crypto_pwhash`, paramètres de production) au lieu de la RFC 9106, dont les vecteurs utilisent des données associées que `hash-wasm` ne prend pas en charge ;
+- `minimatch` forcé en ≥ 11.0.1 (`overrides`) pour corriger GHSA-g3hv-75wg-m249 dans l'outillage ESLint.
 
 ### Phase 3 — Inscription et connexion zero-knowledge (2,5 j)
 
