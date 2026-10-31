@@ -18,12 +18,14 @@ security:
         main:
             lazy: true
             provider: app_user_provider
-            # Authentication (zero-knowledge proof + TOTP) is added in phases 3 and 4.
+            custom_authenticators:
+                - App\Security\ProofAuthenticator
+            entry_point: App\Security\ApiEntryPoint
 
     # Note: Only the *first* matching rule is applied
     access_control:
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
+        - { path: ^/api/(session|auth/(prelogin|register|login|logout))$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/, roles: IS_AUTHENTICATED_FULLY }
 
 when@test:
     security:

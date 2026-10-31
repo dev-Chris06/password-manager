@@ -6,9 +6,10 @@ const watch = process.argv.includes('--watch');
 
 /** @type {import('esbuild').BuildOptions} */
 const webOptions = {
-  entryPoints: { app: 'frontend/web/src/main.ts' },
+  entryPoints: { app: 'frontend/web/src/main.ts', style: 'frontend/web/styles/app.css' },
   outdir: 'public/build',
   bundle: true,
+  loader: { '.txt': 'text' },
   format: 'esm',
   target: ['chrome120', 'edge120', 'firefox121', 'safari17'],
   sourcemap: watch ? 'inline' : false,

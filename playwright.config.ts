@@ -5,6 +5,10 @@ const port = process.env.E2E_PORT ?? '8765';
 export default defineConfig({
   testDir: 'tests/e2e',
   forbidOnly: !!process.env.CI,
+  // Tests share one database and reset it: they run one at a time.
+  workers: 1,
+  fullyParallel: false,
+  timeout: 90_000,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {

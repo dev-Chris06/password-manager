@@ -3,8 +3,11 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="referrer" content="no-referrer">
         <title>{% block title %}Gestionnaire de mots de passe{% endblock %}</title>
-        {% block stylesheets %}{% endblock %}
+        {% block stylesheets %}
+            <link rel="stylesheet" href="{{ asset('build/style.css') }}">
+        {% endblock %}
         {% block javascripts %}
             <script type="module" src="{{ asset('build/app.js') }}" nonce="{{ csp_nonce() }}"></script>
         {% endblock %}

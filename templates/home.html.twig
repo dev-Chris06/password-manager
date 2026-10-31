@@ -1,8 +1,12 @@
 {% extends 'base.html.twig' %}
 
 {% block body %}
-    <main>
-        <h1>Gestionnaire de mots de passe</h1>
-        <p>Refonte zero-knowledge en cours.</p>
+    <header class="site-header">
+        <span class="brand">Gestionnaire de mots de passe</span>
+    </header>
+    <main id="app" aria-live="polite">
+        <noscript>
+            <p class="noscript">Le coffre est chiffré dans votre navigateur : JavaScript est indispensable.</p>
+        </noscript>
     </main>
 {% endblock %}

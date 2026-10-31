@@ -22,7 +22,8 @@ test('home page sends the security headers', async ({ request }) => {
 
   expect(headers['content-security-policy']).toContain("default-src 'self'");
   expect(headers['content-security-policy']).toContain("require-trusted-types-for 'script'");
-  expect(headers['content-security-policy']).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+'/);
+  expect(headers['content-security-policy']).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'wasm-unsafe-eval'/);
+  expect(headers['content-security-policy']).not.toMatch(/'unsafe-eval'|'unsafe-inline'/);
   expect(headers['x-content-type-options']).toBe('nosniff');
   expect(headers['referrer-policy']).toBe('no-referrer');
   expect(headers['cross-origin-opener-policy']).toBe('same-origin');

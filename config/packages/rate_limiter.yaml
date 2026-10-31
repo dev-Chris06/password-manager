@@ -1,0 +1,21 @@
+# Login and registration limits (docs/PLAN.md §4.6). Overlapping sliding windows replace the
+# escalating lockouts of the former application. Storage: filesystem cache + flock (shared hosting).
+framework:
+    cache:
+        pools:
+            cache.rate_limiter:
+                adapter: cache.adapter.filesystem
+
+    rate_limiter:
+        login_pair_short:  { policy: sliding_window, limit: 5,   interval: '15 minutes', cache_pool: cache.rate_limiter }
+        login_pair_long:   { policy: sliding_window, limit: 20,  interval: '24 hours',   cache_pool: cache.rate_limiter }
+        login_ip_short:    { policy: sliding_window, limit: 30,  interval: '1 hour',     cache_pool: cache.rate_limiter }
+        login_ip_long:     { policy: sliding_window, limit: 100, interval: '24 hours',   cache_pool: cache.rate_limiter }
+        login_email_short: { policy: sliding_window, limit: 10,  interval: '1 hour',     cache_pool: cache.rate_limiter }
+        login_email_long:  { policy: sliding_window, limit: 30,  interval: '24 hours',   cache_pool: cache.rate_limiter }
+        login_device:      { policy: sliding_window, limit: 10,  interval: '15 minutes', cache_pool: cache.rate_limiter }
+        second_factor:     { policy: sliding_window, limit: 5,   interval: '15 minutes', cache_pool: cache.rate_limiter }
+        reauthentication:  { policy: sliding_window, limit: 5,   interval: '15 minutes', cache_pool: cache.rate_limiter }
+        registration:      { policy: sliding_window, limit: 5,   interval: '1 hour',     cache_pool: cache.rate_limiter }
+        prelogin:          { policy: sliding_window, limit: 60,  interval: '1 hour',     cache_pool: cache.rate_limiter }
+

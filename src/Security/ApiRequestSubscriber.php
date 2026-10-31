@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Security;
 
+use App\Exception\ApiErrorCode;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -147,7 +148,10 @@ final class ApiRequestSubscriber implements EventSubscriberInterface
 
         $exception = $event->getThrowable();
         $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
-        $response = self::error($status, self::ERROR_CODES[$status] ?? ($status >= 500 ? 'internal_error' : 'error'));
+        $code = $exception instanceof ApiErrorCode
+            ? $exception->getErrorCode()
+            : (self::ERROR_CODES[$status] ?? ($status >= 500 ? 'internal_error' : 'error'));
+        $response = self::error($status, $code);
 
         if ($exception instanceof HttpExceptionInterface) {
             foreach ($exception->getHeaders() as $name => $value) {
