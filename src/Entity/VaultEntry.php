@@ -22,9 +22,6 @@ use Symfony\Component\Uid\Uuid;
 #[ORM\HasLifecycleCallbacks]
 class VaultEntry
 {
-    /** Upper bound of a blob, in characters of base64 (≈ 64 KiB of ciphertext). */
-    public const int MAX_BLOB_LENGTH = 87_400;
-
     #[ORM\Id]
     #[ORM\Column(type: UuidType::NAME, unique: true)]
     private Uuid $uuid;
