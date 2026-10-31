@@ -1,0 +1,3 @@
+# Safety net: if the document root was wrongly set to the project directory instead of public/,
+# nothing at all is served (no .env, vendor/, var/…).
+Require all denied

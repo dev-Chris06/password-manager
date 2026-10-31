@@ -93,6 +93,14 @@ npm run test:e2e  # Playwright (démarre le serveur PHP automatiquement)
 
 Corriger automatiquement le style PHP : `composer fix`.
 
+## Produire une version
+
+```bash
+COMPOSER_BIN="php composer.phar" bash tools/package-release.sh 1.0.0   # dist/ : archive serveur + zip de l'extension
+```
+
+Installation : [mutualisé](deploy/mutualise.md) ou [VPS](deploy/vps.md).
+
 ## Maintenance
 
 ```bash

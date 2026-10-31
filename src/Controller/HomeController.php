@@ -13,6 +13,10 @@ final class HomeController extends AbstractController
     #[Route('/', name: 'home', methods: ['GET'])]
     public function index(): Response
     {
-        return $this->render('home.html.twig');
+        $response = $this->render('home.html.twig');
+        // The page carries a per-request CSP nonce and must never be served from a cache.
+        $response->headers->set('Cache-Control', 'no-store, private');
+
+        return $response;
     }
 }

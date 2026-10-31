@@ -1,0 +1,35 @@
+# Apache configuration (shared hosting). The document root must be this public/ directory.
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+
+# Never serve dotfiles (.user.ini, .htaccess…).
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Force HTTPS (the session cookie requires it in production).
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+    # Pass the Authorization header and route everything else to the front controller.
+    RewriteCond %{HTTP:Authorization} .+
+    RewriteRule ^ - [E=HTTP_AUTHORIZATION:%0]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+    # Without mod_rewrite the application cannot work: refuse instead of exposing anything.
+    Require all denied
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always unset X-Powered-By
+    # Static files (build/) get the same base protections as the pages served by PHP.
+    <FilesMatch "\.(js|css)$">
+        Header set X-Content-Type-Options "nosniff"
+        Header set Cross-Origin-Resource-Policy "same-origin"
+    </FilesMatch>
+</IfModule>
