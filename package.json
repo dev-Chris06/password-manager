@@ -12,9 +12,10 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run e2e:db && php bin/console cache:clear --env=e2e --no-debug --quiet && playwright test",
     "check:apis": "node tools/check-forbidden-apis.mjs",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build && npm run check:apis"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build && npm run check:apis",
+    "e2e:db": "php bin/console doctrine:database:drop --env=e2e --force --if-exists --quiet && php bin/console doctrine:database:create --env=e2e --quiet && php bin/console doctrine:migrations:migrate --env=e2e --no-interaction --quiet"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -16,6 +16,6 @@ export default defineConfig({
     command: `php -d session.upload_progress.enabled=0 -d variables_order=EGPCS -S 127.0.0.1:${port} -t public`,
     url: `http://127.0.0.1:${port}/`,
     reuseExistingServer: !process.env.CI,
-    env: { APP_ENV: 'test', APP_DEBUG: '0' },
+    env: { APP_ENV: 'e2e', APP_DEBUG: '0' },
   },
 });

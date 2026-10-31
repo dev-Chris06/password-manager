@@ -42,6 +42,29 @@ cp .env.local.dist .env.local     # facultatif en phase 0, puis renseigner les v
 npm run build
 ```
 
+## Base de données locale
+
+Créer un utilisateur MySQL dédié (en `root`, une seule fois) :
+
+```sql
+CREATE USER 'pm_app'@'localhost' IDENTIFIED BY 'un-mot-de-passe-long';
+GRANT ALL PRIVILEGES ON `pm\_vault`.* TO 'pm_app'@'localhost';
+GRANT ALL PRIVILEGES ON `pm\_vault\_test%`.* TO 'pm_app'@'localhost';
+```
+
+Puis renseigner `DATABASE_URL` dans `.env.local` (application), `.env.test.local` (tests PHP) et `.env.e2e.local` (tests Playwright) — trois fichiers ignorés par git, avec la même valeur :
+
+```dotenv
+DATABASE_URL="mysql://pm_app:un-mot-de-passe-long@localhost:3306/pm_vault?serverVersion=8.0.40&charset=utf8mb4"
+```
+
+L'environnement `test` utilise la base `pm_vault_test` ; l'environnement `e2e` utilise `pm_vault_test_e2e`, recréée automatiquement par `npm run test:e2e`. Créer les bases et appliquer les migrations :
+
+```bash
+php bin/console doctrine:database:create && php bin/console doctrine:migrations:migrate -n
+php bin/console doctrine:database:create --env=test && php bin/console doctrine:migrations:migrate -n --env=test
+```
+
 ## Configuration locale
 
 - `.env` est **versionné** et ne contient que des valeurs par défaut sans secret.
@@ -69,6 +92,12 @@ npm run test:e2e  # Playwright (démarre le serveur PHP automatiquement)
 ```
 
 Corriger automatiquement le style PHP : `composer fix`.
+
+## Maintenance
+
+```bash
+php bin/console app:purge   # journal > 90 jours, sessions expirées, appareils inactifs > 180 jours (à lancer chaque jour par cron)
+```
 
 ## Arborescence
 
