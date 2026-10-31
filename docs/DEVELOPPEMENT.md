@@ -58,7 +58,7 @@ Puis renseigner `DATABASE_URL` dans `.env.local` (application), `.env.test.local
 DATABASE_URL="mysql://pm_app:un-mot-de-passe-long@localhost:3306/pm_vault?serverVersion=8.0.40&charset=utf8mb4"
 ```
 
-Les environnements `test` et `e2e` ajoutent automatiquement le suffixe `_test` au nom de la base. Créer les bases et appliquer les migrations :
+L'environnement `test` utilise la base `pm_vault_test` ; l'environnement `e2e` utilise `pm_vault_test_e2e`, recréée automatiquement par `npm run test:e2e`. Créer les bases et appliquer les migrations :
 
 ```bash
 php bin/console doctrine:database:create && php bin/console doctrine:migrations:migrate -n

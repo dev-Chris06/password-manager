@@ -34,7 +34,8 @@ when@test:
 when@e2e:
     doctrine:
         dbal:
-            dbname_suffix: '_test'
+            # Separate from the PHPUnit database: Playwright data is real, not rolled back.
+            dbname_suffix: '_test_e2e'
 
 when@prod:
     doctrine:

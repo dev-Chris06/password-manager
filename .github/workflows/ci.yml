@@ -100,10 +100,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: composer install --no-interaction --no-progress --prefer-dist
-      - name: Create the test database from the migrations
-        run: |
-          php bin/console doctrine:database:create --env=test
-          php bin/console doctrine:migrations:migrate --env=test --no-interaction
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
