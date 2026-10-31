@@ -1,5 +1,17 @@
 # Vidéo de démonstration — script et scénario
 
+## Fabrication
+
+La vidéo est produite à partir de **la vraie application**, sans maquette :
+
+1. **Tournage** : `CAPTURE_VIDEO=1 npm run test:e2e -- tests/e2e/video-capture.spec.ts` filme une session complète dans Chromium avec l'extension chargée (données fictives). Le script enregistre, dans `var/video-capture/`, les vidéos de chaque page, le minutage de chaque étape, les lignes réellement stockées en base et les requêtes réellement envoyées.
+2. **Montage** : un projet [Remotion](https://www.remotion.dev) (composition `GestionnaireMDP`) découpe ces prises selon le minutage, ajoute les sous-titres ci-dessous, le schéma d'architecture, la scène « ce que voit le serveur » (alimentée par les données capturées) et l'écran de fin.
+3. **Rendu** : `npx remotion render GestionnaireMDP out/gestionnaire-mdp-demo.mp4`.
+
+Pas de voix off : sous-titres en français. Une voix enregistrée peut être ajoutée ensuite.
+
+## Scénario
+
 Durée cible : **2 min 30**. Format : 1920×1080, navigateur en plein écran, zoom 125 %, thème clair. Voix off ou sous-titres en français.
 
 Préparation : base vide (`npm run e2e:db` ou installation neuve), application d'authentification sur un téléphone (ou [2FAS](https://2fas.com) / Aegis), extension chargée, une page de connexion de démonstration (par exemple un site de test personnel en HTTPS).
