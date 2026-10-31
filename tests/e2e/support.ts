@@ -21,6 +21,29 @@ export function resetState(): void {
   console('cache:pool:clear', 'cache.rate_limiter');
 }
 
+/** Runs a read-only SQL query against the e2e database and returns its textual output. */
+export function sql(query: string): string {
+  return execFileSync('php', ['bin/console', 'dbal:run-sql', query, '--env=e2e', '--no-debug'], { encoding: 'utf8' });
+}
+
+export async function addEntryThroughUi(
+  page: Page,
+  entry: { site: string; username: string; password: string; category?: string; notes?: string },
+): Promise<void> {
+  await page.getByRole('button', { name: 'Ajouter' }).click();
+  await page.getByLabel('Site', { exact: true }).fill(entry.site);
+  await page.getByLabel('Identifiant').fill(entry.username);
+  await page.getByLabel('Mot de passe', { exact: true }).fill(entry.password);
+  if (entry.category !== undefined) {
+    await page.getByLabel('Catégorie').selectOption({ label: entry.category });
+  }
+  if (entry.notes !== undefined) {
+    await page.getByLabel('Notes').fill(entry.notes);
+  }
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByText('Entrée ajoutée.')).toBeVisible();
+}
+
 /** Records every request body and URL sent by the page, to check that no secret leaves it. */
 export function recordTraffic(page: Page): string[] {
   const traffic: string[] = [];

@@ -152,6 +152,26 @@ export async function unlock(api: ApiClient, email: string, masterPassword: stri
   return { email, vaultKey, vault };
 }
 
+/**
+ * Derives a fresh authentication proof from the master password, for sensitive actions
+ * (backup codes, master password change). Also returns the wrapping key.
+ */
+export async function reauthenticate(
+  vault: VaultResponse,
+  masterPassword: string,
+  secretKeyText?: string,
+): Promise<{ authProof: string; wrapKey: CryptoKey }> {
+  const text = secretKeyText ?? loadSecretKey(vault.email);
+  if (text === null || text === '') {
+    throw new MissingSecretKeyError();
+  }
+  assertKdfParameters(vault.kdf);
+  const { wrapKey, authProof } = await deriveAccountKeys(masterPassword, parseSecretKey(text), base64ToBytes(vault.salt), vault.kdf);
+  // Fails here, before any request, if the master password is wrong.
+  await unwrapVaultKey(wrapKey, vault.wrappedVaultKey);
+  return { authProof, wrapKey };
+}
+
 export class MissingSecretKeyError extends Error {
   override name = 'MissingSecretKeyError';
 

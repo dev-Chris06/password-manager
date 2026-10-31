@@ -1,5 +1,5 @@
 // Single-page vault application: screens and transitions between them.
-import { ApiClient } from './api';
+import { ApiClient, ApiError } from './api';
 import {
   completeSecondFactor,
   confirmTwoFactorEnrollment,
@@ -7,23 +7,35 @@ import {
   login,
   type LoginResult,
   openVault,
+  reauthenticate,
   register,
   startTwoFactorEnrollment,
   unlock,
   type UnlockedVault,
 } from './auth';
+import { startAutoLock } from './autoLock';
 import { describeError } from './errors';
 import { loadSecretKey } from './secretKeyStore';
+import { VaultStore, VersionConflictError } from './vaultStore';
 import { backupCodesView } from './views/backupCodesView';
+import { entryFormView } from './views/entryFormView';
+import { journalView } from './views/journalView';
 import { kitView } from './views/kitView';
 import { loginView } from './views/loginView';
 import { registerView } from './views/registerView';
 import { secondFactorView } from './views/secondFactorView';
+import { settingsView } from './views/settingsView';
 import { twoFactorSetupView } from './views/twoFactorSetupView';
 import { vaultView } from './views/vaultView';
 
+interface OpenVault {
+  readonly unlocked: UnlockedVault;
+  readonly store: VaultStore;
+  readonly stopAutoLock: () => void;
+}
+
 export class App {
-  private unlocked: UnlockedVault | null = null;
+  private open: OpenVault | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -43,8 +55,22 @@ export class App {
 
   private show(view: HTMLElement): void {
     this.root.replaceChildren(view);
-    view.querySelector<HTMLInputElement>('input:not([readonly]):not([type=hidden])')?.focus();
+    view.querySelector<HTMLInputElement>('input:not([readonly]):not([type=hidden]):not([type=search])')?.focus();
   }
+
+  /** Error messages of the unlocked vault; an expired server session sends back to the login. */
+  private readonly describe = (error: unknown): string => {
+    if (error instanceof ApiError && error.status === 401) {
+      this.close();
+      void this.start();
+    }
+    if (error instanceof VersionConflictError) {
+      return 'Cette entrée a été modifiée ailleurs entre-temps : la liste a été rechargée, recommencez la modification.';
+    }
+    return describeError(error);
+  };
+
+  // --- Account creation and login -------------------------------------------------------------
 
   private showRegister(): void {
     this.show(
@@ -95,8 +121,7 @@ export class App {
         askSecretKey: (typed) => typed !== '' && loadSecretKey(typed) === null,
         describe: describeError,
         onSubmit: async (_email, masterPassword, secretKeyText) => {
-          this.unlocked = await unlock(this.api, email, masterPassword, secretKeyText);
-          this.showVault();
+          await this.enterVault(await unlock(this.api, email, masterPassword, secretKeyText));
         },
         onLogout: () => this.logout(),
       }),
@@ -118,8 +143,7 @@ export class App {
   }
 
   private async finishLogin(derived: DerivedLogin): Promise<void> {
-    this.unlocked = await openVault(this.api, derived);
-    this.showVault();
+    await this.enterVault(await openVault(this.api, derived));
   }
 
   private showSecondFactor(derived: DerivedLogin): void {
@@ -143,12 +167,7 @@ export class App {
         onConfirm: async (code) => {
           const codes = await confirmTwoFactorEnrollment(this.api, code);
           this.show(
-            backupCodesView({
-              email: derived.email,
-              codes,
-              describe: describeError,
-              onContinue: () => this.finishLogin(derived),
-            }),
+            backupCodesView({ email: derived.email, codes, describe: describeError, onContinue: () => this.finishLogin(derived) }),
           );
         },
         onCancel: () => this.logout(),
@@ -156,34 +175,117 @@ export class App {
     );
   }
 
-  private showVault(): void {
-    const unlocked = this.unlocked;
-    if (unlocked === null) {
+  // --- Unlocked vault ----------------------------------------------------------------------
+
+  private async enterVault(unlocked: UnlockedVault): Promise<void> {
+    this.close();
+    const store = new VaultStore(this.api, unlocked.vaultKey);
+    await store.load(unlocked.vault);
+    this.open = { unlocked, store, stopAutoLock: startAutoLock(() => { this.lock(); }) };
+    this.showVault();
+  }
+
+  private showVault(notice?: string): void {
+    const open = this.open;
+    if (open === null) {
       return;
     }
     this.show(
       vaultView({
-        email: unlocked.email,
-        entryCount: unlocked.vault.entries.length,
-        backupCodesRemaining: unlocked.vault.backupCodesRemaining,
-        onLock: () => {
-          this.lock();
-        },
+        email: open.unlocked.email,
+        store: open.store,
+        backupCodesRemaining: open.unlocked.vault.backupCodesRemaining,
+        notice,
+        describe: this.describe,
+        onAdd: () => { this.showEntryForm(); },
+        onEdit: (uuid) => { this.showEntryForm(uuid); },
+        onDelete: (uuid) => open.store.remove(uuid),
+        onJournal: () => { this.show(journalView(this.api, () => { this.showVault(); }, this.describe)); },
+        onSettings: () => { this.showSettings(); },
+        onLock: () => { this.lock(); },
         onLogout: () => this.logout(),
       }),
     );
   }
 
+  private showEntryForm(uuid?: string): void {
+    const open = this.open;
+    if (open === null) {
+      return;
+    }
+    const existing = uuid === undefined ? undefined : open.store.get(uuid);
+    this.show(
+      entryFormView({
+        title: existing === undefined ? 'Nouvelle entrée' : 'Modifier l’entrée',
+        initial: existing?.data,
+        reusedOn: (password) => open.store.reusedOn(password, uuid),
+        describe: this.describe,
+        onCancel: () => { this.showVault(); },
+        onSave: async (data) => {
+          try {
+            if (existing === undefined) {
+              await open.store.add(data);
+            } else {
+              await open.store.update(existing.uuid, data);
+            }
+          } catch (error) {
+            if (error instanceof VersionConflictError) {
+              this.showVault(this.describe(error));
+              return;
+            }
+            throw error;
+          }
+          this.showVault(existing === undefined ? 'Entrée ajoutée.' : 'Entrée modifiée.');
+        },
+      }),
+    );
+  }
+
+  private showSettings(): void {
+    const open = this.open;
+    if (open === null) {
+      return;
+    }
+    this.show(
+      settingsView({
+        describe: this.describe,
+        onBack: () => { this.showVault(); },
+        onRegenerateBackupCodes: async (masterPassword, totpCode) => {
+          const { authProof } = await reauthenticate(open.unlocked.vault, masterPassword);
+          const { backupCodes } = await this.api.post<{ backupCodes: string[] }>('/api/2fa/backup-codes', { authProof, code: totpCode });
+          this.open = { ...open, unlocked: { ...open.unlocked, vault: { ...open.unlocked.vault, backupCodesRemaining: backupCodes.length } } };
+          this.show(
+            backupCodesView({
+              email: open.unlocked.email,
+              codes: backupCodes,
+              describe: this.describe,
+              onContinue: () => { this.showVault('Nouveaux codes de secours enregistrés.'); return Promise.resolve(); },
+            }),
+          );
+        },
+      }),
+    );
+  }
+
+  /** Forgets the vault key and every decrypted value. */
+  private close(): void {
+    if (this.open !== null) {
+      this.open.stopAutoLock();
+      this.open.store.clear();
+      this.open = null;
+    }
+  }
+
   private lock(): void {
-    const email = this.unlocked?.email;
-    this.unlocked = null;
+    const email = this.open?.unlocked.email;
+    this.close();
     if (email !== undefined) {
       this.showLocked(email);
     }
   }
 
   private async logout(): Promise<void> {
-    this.unlocked = null;
+    this.close();
     await this.api.post('/api/auth/logout');
     await this.start();
   }

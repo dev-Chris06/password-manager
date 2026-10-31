@@ -377,18 +377,26 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 5 — Coffre, application sur une seule page (3 j)
 
-- [ ] Endpoints `vault`, `entries` (CRUD avec `version` → 409), `audit-log` ; isolation stricte par utilisateur ; taille maximale des blobs ; quota de 5 000 entrées.
-- [ ] Page `/vault` (Twig + bundle TypeScript), états **non connecté → 2FA → verrouillé → déverrouillé**.
-- [ ] Liste, recherche et filtre par catégorie (après déchiffrement local), ajout, modification, suppression, résolution des conflits 409.
-- [ ] Générateur de mots de passe (`crypto.getRandomValues`, longueur et jeux de caractères réglables), jauge de robustesse, alerte de réutilisation (comparaison locale).
-- [ ] Copie dans le presse-papiers avec effacement tenté après 15 s, **seulement si le presse-papiers contient encore le mot de passe** ; libellé honnête dans l'interface.
-- [ ] Verrouillage automatique (inactivité et onglet caché), bouton « Verrouiller », effacement des références aux clés et aux données déchiffrées.
-- [ ] Vue Journal intégrée, pour ne pas verrouiller le coffre en changeant de page.
-- [ ] Aucun `innerHTML` : rendu par `textContent` et création d'éléments ; compatible Trusted Types.
+- [x] Endpoints `vault`, `entries` (CRUD avec `version` → 409), `audit-log` ; isolation stricte par utilisateur ; taille maximale des blobs ; quota de 5 000 entrées.
+- [x] Page `/vault` (Twig + bundle TypeScript), états **non connecté → 2FA → verrouillé → déverrouillé**.
+- [x] Liste, recherche et filtre par catégorie (après déchiffrement local), ajout, modification, suppression, résolution des conflits 409.
+- [x] Générateur de mots de passe (`crypto.getRandomValues`, longueur et jeux de caractères réglables), jauge de robustesse, alerte de réutilisation (comparaison locale).
+- [x] Copie dans le presse-papiers avec effacement tenté après 15 s, **seulement si le presse-papiers contient encore le mot de passe** ; libellé honnête dans l'interface.
+- [x] Verrouillage automatique (inactivité et onglet caché), bouton « Verrouiller », effacement des références aux clés et aux données déchiffrées.
+- [x] Vue Journal intégrée, pour ne pas verrouiller le coffre en changeant de page.
+- [x] Aucun `innerHTML` : rendu par `textContent` et création d'éléments ; compatible Trusted Types.
 
 **Tests** :
 - PHPUnit : isolation entre deux comptes sur chaque route ; conflit 409 ; limites de taille et de quota.
 - Playwright : ajout, modification, suppression ; recharger la page verrouille le coffre ; verrouillage automatique (horloge simulée) ; **aucun texte en clair en base** (requête SQL après saisie d'un site connu).
+
+**Écarts constatés lors de la réalisation** :
+- la page du coffre est servie sur `/` (même application que la connexion, phase 3) plutôt que sur `/vault` ;
+- `POST /api/entries/batch` est reporté à la phase 6, où il sert à l'import et au renouvellement de la clé ;
+- les UUID des entrées sont des UUID v4 générés par le client ; une entrée d'un autre compte est indiscernable d'une entrée inexistante (404, et 409 à la création) ;
+- un écran « Paramètres » regroupe dès maintenant la régénération des codes de secours ; la phase 6 y ajoute le mot de passe maître, la sauvegarde et HIBP ;
+- le générateur exclut les caractères ambigus (0/O, 1/l/I) ;
+- les entrées illisibles (données altérées) sont comptées et signalées, jamais affichées.
 
 ### Phase 6 — Mot de passe maître, sauvegarde, HIBP (2 j)
 
