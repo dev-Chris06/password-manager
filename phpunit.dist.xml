@@ -34,10 +34,14 @@
         </include>
 
         <deprecationTrigger>
+            <method>Doctrine\Deprecations\Deprecation::trigger</method>
+            <method>Doctrine\Deprecations\Deprecation::delegateTriggerToBackend</method>
             <function>trigger_deprecation</function>
         </deprecationTrigger>
     </source>
 
     <extensions>
+        <!-- Every test runs inside a transaction rolled back afterwards. -->
+        <bootstrap class="DAMA\DoctrineTestBundle\PHPUnit\PHPUnitExtension"/>
     </extensions>
 </phpunit>

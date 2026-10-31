@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "php bin/console cache:clear --env=e2e --no-debug --quiet && playwright test",
     "check:apis": "node tools/check-forbidden-apis.mjs",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build && npm run check:apis"
   },

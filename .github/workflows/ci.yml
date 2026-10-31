@@ -14,12 +14,28 @@ concurrency:
 
 jobs:
   php:
-    name: PHP ${{ matrix.php }}
+    name: PHP ${{ matrix.php }} / ${{ matrix.db }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.3', '8.4', '8.5']
+        include:
+          - { php: '8.3', db: mysql }
+          - { php: '8.4', db: mysql }
+          - { php: '8.5', db: mysql }
+          - { php: '8.3', db: mariadb }
+    services:
+      database:
+        image: ${{ matrix.db == 'mysql' && 'mysql:8.0' || 'mariadb:11.4' }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="${{ matrix.db == 'mysql' && 'mysqladmin ping -h 127.0.0.1 -uroot -proot' || 'healthcheck.sh --connect --innodb_initialized' }}"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/pm_vault?serverVersion=${{ matrix.db == 'mysql' && '8.0.40' || '11.4.0-MariaDB' }}&charset=utf8mb4
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -33,6 +49,11 @@ jobs:
         run: php tools/check-php-platform.php
       - run: composer validate --strict
       - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Create the test database from the migrations
+        run: |
+          php bin/console doctrine:database:create --env=test
+          php bin/console doctrine:migrations:migrate --env=test --no-interaction
+          php bin/console doctrine:schema:validate --env=test
       - run: composer check
       - run: composer audit
 
@@ -53,6 +74,17 @@ jobs:
     name: End-to-end (Playwright)
     runs-on: ubuntu-latest
     needs: [php, frontend]
+    services:
+      database:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/pm_vault?serverVersion=8.0.40&charset=utf8mb4
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -68,6 +100,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Create the test database from the migrations
+        run: |
+          php bin/console doctrine:database:create --env=test
+          php bin/console doctrine:migrations:migrate --env=test --no-interaction
       - run: npm ci
       - run: npm run build
       - run: npx playwright install --with-deps chromium
@@ -79,4 +115,5 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            var/log/
           retention-days: 7

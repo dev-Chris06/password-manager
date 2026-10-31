@@ -2,11 +2,32 @@
 framework:
     secret: '%env(APP_SECRET)%'
 
-    # Note that the session will be started ONLY if you read or write from it.
-    session: true
+    # Only X-Forwarded-* headers coming from these proxies are trusted (empty by default).
+    trusted_proxies: '%env(TRUSTED_PROXIES)%'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-proto', 'x-forwarded-port', 'x-forwarded-host']
 
-    #esi: true
-    #fragments: true
+    csrf_protection: true
+
+    # Sessions are stored in the database (revocable, works on shared hosting).
+    # The session only starts when it is read or written.
+    session:
+        handler_id: app.session_handler
+        name: pm_session
+        cookie_lifetime: 0
+        cookie_secure: auto
+        cookie_httponly: true
+        cookie_samesite: strict
+        # Idle timeout: 15 minutes (the absolute timeout is enforced by the application).
+        gc_maxlifetime: 900
+        gc_probability: 1
+        gc_divisor: 100
+
+when@prod:
+    framework:
+        session:
+            # The __Host- prefix forces Secure, Path=/ and no Domain attribute.
+            name: __Host-pm_session
+            cookie_secure: true
 
 when@test:
     framework:

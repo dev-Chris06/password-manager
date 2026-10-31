@@ -188,13 +188,13 @@ Serveur : salt, paramètres KDF, hash(auth_proof) via PasswordHasher, wrapped_va
 
 | Table | Colonnes principales |
 |---|---|
-| `user` | id, email (unique), kdf_algo, kdf_memory, kdf_iterations, kdf_parallelism, kdf_salt, auth_hash, wrapped_vault_key, totp_secret_enc, totp_pending_enc, totp_enabled_at, totp_last_counter, created_at, updated_at |
-| `vault_entry` | uuid (binaire, PK), user_id (FK, cascade), blob, version, created_at, updated_at |
+| `app_user` | id, email (unique), kdf_algo, kdf_memory, kdf_iterations, kdf_parallelism, kdf_salt, auth_hash, wrapped_vault_key, totp_secret_enc, totp_pending_enc, totp_enabled_at, totp_last_counter, created_at, updated_at |
+| `vault_entry` | uuid (binaire, PK), user_id (FK, cascade), ciphertext, version, created_at, updated_at |
 | `backup_code` | id, user_id, code_hmac (unique par utilisateur), used_at |
 | `trusted_device` | id, user_id, nonce_hash (unique), created_at, last_used_at |
 | `audit_log` | id, user_id (nullable), action, detail, ip, user_agent, created_at |
 | `sessions` | table standard de `PdoSessionHandler` |
-| `cache_items` / fichiers | stockage du RateLimiter (adaptateur compatible mutualisé) |
+| fichiers (`var/`) | stockage du RateLimiter et verrous (`flock`), compatibles mutualisé |
 
 ### 4.8 Organisation du dépôt
 
@@ -217,11 +217,13 @@ deploy/                 ← script VPS, configuration Caddy, pool PHP-FPM, archi
 |---|---|---|
 | `symfony/*` 7.4 (framework, security, rate-limiter, twig, uid, …) | Serveur | Socle (D7) |
 | `doctrine/orm`, `doctrine/doctrine-migrations-bundle` | Serveur | Accès base et migrations versionnées |
+| `symfony/monolog-bundle` | Serveur | Journalisation des erreurs (fichier, compatible mutualisé) |
 | `scheb/2fa-bundle`, `scheb/2fa-totp`, `scheb/2fa-backup-code` | Serveur | Bibliothèque de référence pour la 2FA sous Symfony (D5) |
 | `endroid/qr-code` | Serveur | QR code en SVG (remplace l'ancienne copie de `phpqrcode`) |
 | `hash-wasm` | Client | Argon2id en WASM (D3) |
 | `esbuild`, `typescript`, `vitest`, `eslint`, `@playwright/test` | Développement uniquement | Build et tests |
 | `phpunit`, `phpstan` (+ symfony, doctrine), `php-cs-fixer` | Développement uniquement | Qualité |
+| `dama/doctrine-test-bundle` | Développement uniquement | Chaque test PHP s'exécute dans une transaction annulée |
 
 Toutes ces licences (MIT, Apache-2.0) sont compatibles avec l'AGPL-3.0.
 
@@ -248,22 +250,22 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 **Objectif** : un socle vide mais outillé, dans lequel chaque régression est visible.
 
-- [ ] Poser le tag `avant-refonte` sur l'état actuel (référence historique), puis supprimer l'ancien code (`pages/`, `ajax/`, `includes/`, `config/`, `assets/`, `extension-chrome/`, `migrations/`, `database.sql`, `tests/`, `.htaccess`, `public/router.php`).
-- [ ] Squelette Symfony 7.4 minimal (`symfony/skeleton`), PHP ≥ 8.3 déclaré dans `composer.json`, licence `AGPL-3.0-or-later`.
-- [ ] Fichier `LICENSE` (texte AGPL-3.0), SPDX dans `composer.json` et `package.json`.
-- [ ] Convention de commit en anglais (Conventional Commits : `feat:`, `fix:`, `docs:`, `test:`, `chore:`…), décrite dans `CONTRIBUTING.md`.
-- [ ] Outils PHP : PHPUnit, PHPStan niveau 8 (+ extensions Symfony et Doctrine), PHP-CS-Fixer.
-- [ ] Outils front : `package.json` (Node ≥ 20), TypeScript `strict`, esbuild (cibles `public/build/` et `extension/dist/`), Vitest, ESLint, Playwright (Chromium).
-- [ ] CI GitHub Actions :
+- [x] Poser le tag `avant-refonte` sur l'état actuel (référence historique), puis supprimer l'ancien code (`pages/`, `ajax/`, `includes/`, `config/`, `assets/`, `extension-chrome/`, `migrations/`, `database.sql`, `tests/`, `.htaccess`, `public/router.php`).
+- [x] Squelette Symfony 7.4 minimal (`symfony/skeleton`), PHP ≥ 8.3 déclaré dans `composer.json`, licence `AGPL-3.0-or-later`.
+- [x] Fichier `LICENSE` (texte AGPL-3.0), SPDX dans `composer.json` et `package.json`.
+- [x] Convention de commit en anglais (Conventional Commits : `feat:`, `fix:`, `docs:`, `test:`, `chore:`…), décrite dans `CONTRIBUTING.md`.
+- [x] Outils PHP : PHPUnit, PHPStan niveau 8 (+ extensions Symfony et Doctrine), PHP-CS-Fixer.
+- [x] Outils front : `package.json` (Node ≥ 20), TypeScript `strict`, esbuild (cibles `public/build/` et `extension/dist/`), Vitest, ESLint, Playwright (Chromium).
+- [x] CI GitHub Actions :
   - matrice PHP 8.3 / 8.4 × MySQL 8.0 / MariaDB 11.4 ;
   - lint, PHPStan, PHPUnit, Vitest, build, Playwright ;
   - `composer audit`, `npm audit --omit=dev` ;
   - garde-fou anti-`innerHTML` / `eval`.
-- [ ] `docs/DECISIONS.md` : ADR-001 à ADR-017 (une par décision D1–D17).
-- [ ] Guide d'installation du poste de développement **sans Docker** (PHP local, MySQL 8 local, Node).
-- [ ] README : bandeau « refonte en cours », lien vers ce plan.
+- [x] `docs/DECISIONS.md` : ADR-001 à ADR-017 (une par décision D1–D17).
+- [x] Guide d'installation du poste de développement **sans Docker** (PHP local, MySQL 8 local, Node).
+- [x] README : bandeau « refonte en cours », lien vers ce plan.
 
-- [ ] Exigence de version PHP corrigée (D17) : contrainte `composer.json`, plateforme Composer fixée à 8.3.36, script `tools/check-php-platform.php` exécuté en CI, `public/.user.ini` désactivant `session.upload_progress`.
+- [x] Exigence de version PHP corrigée (D17) : contrainte `composer.json`, plateforme Composer fixée à 8.3.36, script `tools/check-php-platform.php` exécuté en CI, `public/.user.ini` désactivant `session.upload_progress`.
 
 **Terminé quand** : la CI est verte sur le squelette, `GET /` renvoie une page Twig vide avec les en-têtes de sécurité, et un test Playwright « la page s'affiche » passe.
 
@@ -274,16 +276,24 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 1 — Modèle de données et socle de sécurité (1,5 j)
 
-- [ ] Entités Doctrine et migration initiale (section 4.7).
-- [ ] Sessions en base (`PdoSessionHandler`), cookie `__Host-pm_session`, durées de la section 4.4.
-- [ ] Abonné d'événements pour les en-têtes de sécurité, avec nonce CSP par requête exposé à Twig.
-- [ ] Middleware API : vérification `Origin` / `Sec-Fetch-Site`, en-tête `X-PM-Client`, réponses JSON d'erreur uniformes, refus de tout CORS sauf `EXTENSION_ORIGIN`.
-- [ ] Protection CSRF des mutations (gestionnaire « same-origin » de Symfony + jeton).
-- [ ] Configuration `trusted_proxies` par `.env`.
-- [ ] Variables `.env` documentées : `APP_SECRET`, `DATABASE_URL`, `TRUSTED_PROXIES`, `EXTENSION_ORIGIN`, `REGISTRATION_OPEN`.
-- [ ] Commande `app:purge` (journal de plus de 90 jours, sessions expirées, appareils inactifs depuis plus de 180 jours).
+- [x] Entités Doctrine et migration initiale (section 4.7).
+- [x] Sessions en base (`PdoSessionHandler`), cookie `__Host-pm_session` en production, expiration après 15 min d'inactivité (la durée absolue de 4 h arrive avec l'authentification, phase 3).
+- [x] Abonné d'événements pour les en-têtes de sécurité, avec nonce CSP par requête exposé à Twig (réalisé en phase 0).
+- [x] Middleware API : vérification `Origin` / `Sec-Fetch-Site`, en-tête `X-PM-Client`, réponses JSON d'erreur uniformes, refus de tout CORS sauf `EXTENSION_ORIGIN`.
+- [x] Protection CSRF des mutations : jeton de session envoyé dans `X-CSRF-Token`, corps JSON obligatoire, en plus des contrôles d'origine.
+- [x] Configuration `trusted_proxies` par `.env`.
+- [x] Variables `.env` documentées : `APP_SECRET`, `DATABASE_URL`, `TRUSTED_PROXIES`, `EXTENSION_ORIGIN`, `LOCK_DSN`.
+- [x] Commande `app:purge` (journal de plus de 90 jours, sessions expirées, appareils inactifs depuis plus de 180 jours).
 
 **Tests** : migration jouée sur MySQL et MariaDB ; présence des en-têtes ; requête sans `X-PM-Client` → 403 ; `Origin` étranger → 403 ; `X-Forwarded-For` ignoré sans proxy déclaré.
+
+**Écarts constatés lors de la réalisation** :
+- table `app_user` au lieu de `user`, et colonne `ciphertext` au lieu de `blob` (mots réservés en SQL) ;
+- le jeton CSRF utilise le gestionnaire de jetons à session de Symfony plutôt que le gestionnaire « same-origin » : la vérification d'origine est faite à part par le middleware, et le jeton lié à la session est plus simple à utiliser depuis l'extension ;
+- pas de variable `REGISTRATION_OPEN` : la fermeture des inscriptions après le premier compte est automatique (phase 3) ;
+- la route `GET /api/session` est livrée dès cette phase, car elle sert de support aux tests des protections de l'API ;
+- un environnement Symfony `e2e` (configuré comme la production, sur HTTP et avec la base de test) sert aux tests Playwright, qui exercent ainsi les vraies sessions en base ;
+- dépendances ajoutées : `symfony/monolog-bundle` (journaux d'erreurs), `symfony/lock`, `dama/doctrine-test-bundle` et `phpstan/phpstan-doctrine` (développement).
 
 ### Phase 2 — Module crypto partagé (2 j)
 
