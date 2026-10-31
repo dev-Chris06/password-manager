@@ -12,8 +12,8 @@ use Symfony\Component\HttpKernel\KernelEvents;
 /**
  * Adds the security headers to every main response.
  *
- * The CSP only grants what the application currently needs; later phases extend it
- * ('wasm-unsafe-eval' for Argon2id, the HIBP origin in connect-src). See docs/PLAN.md §4.6.
+ * The CSP only grants what the application needs. 'wasm-unsafe-eval' lets the Argon2id
+ * WebAssembly module compile; it does not allow eval() of JavaScript. See docs/PLAN.md §4.6.
  */
 final class SecurityHeadersSubscriber implements EventSubscriberInterface
 {
@@ -36,7 +36,7 @@ final class SecurityHeadersSubscriber implements EventSubscriberInterface
 
         $headers->set('Content-Security-Policy', implode('; ', [
             "default-src 'self'",
-            \sprintf("script-src 'self' 'nonce-%s'", $this->cspNonce->get()),
+            \sprintf("script-src 'self' 'nonce-%s' 'wasm-unsafe-eval'", $this->cspNonce->get()),
             "style-src 'self'",
             "img-src 'self' data:",
             "connect-src 'self'",

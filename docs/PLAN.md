@@ -328,21 +328,30 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 3 — Inscription et connexion zero-knowledge (2,5 j)
 
-- [ ] Endpoints `prelogin`, `register`, `login`, `logout`, `session` (section 4.5). `login` passe par un authentificateur Symfony personnalisé qui vérifie `authProof`.
-- [ ] Hachage de la preuve via `PasswordHasher` (`auto`, donc Argon2id ou bcrypt selon le serveur).
-- [ ] Faux sel déterministe pour un email inconnu (prelogin indiscernable).
-- [ ] Limiteurs de la section 4.6, avec réponses `429` et `Retry-After`. Aucun `sleep`.
-- [ ] Device cookie et table `trusted_device`.
-- [ ] Inscription fermée automatiquement après le premier compte (`REGISTRATION_OPEN=false` par défaut une fois le compte créé).
-- [ ] Fermeture des inscriptions protégée contre les requêtes simultanées (verrou ou contrainte en base), testée.
-- [ ] Pages Twig + TypeScript :
+- [x] Endpoints `prelogin`, `register`, `login`, `logout`, `session` (section 4.5). `login` passe par un authentificateur Symfony personnalisé qui vérifie `authProof`.
+- [x] Hachage de la preuve via `PasswordHasher` (`auto`, donc Argon2id ou bcrypt selon le serveur).
+- [x] Faux sel déterministe pour un email inconnu (prelogin indiscernable).
+- [x] Limiteurs de la section 4.6, avec réponses `429` et `Retry-After`. Aucun `sleep`.
+- [x] Device cookie et table `trusted_device`.
+- [x] Inscription fermée automatiquement après le premier compte.
+- [x] Fermeture des inscriptions protégée contre les requêtes simultanées (verrou ou contrainte en base), testée.
+- [x] Pages Twig + TypeScript :
   - **inscription** : contrôles du mot de passe maître côté client (≥ 12 caractères, refus des 10 000 mots de passe les plus courants, jauge de robustesse), génération de la Secret Key, **kit de secours à imprimer obligatoire** avant de continuer ;
   - **connexion** : email, mot de passe maître, Secret Key si l'appareil ne la connaît pas.
-- [ ] Journal : `register`, `login_success`, `login_failure`, `logout`.
+- [x] Journal : `register`, `login_success`, `login_failure`, `logout`.
 
 **Tests** :
 - PHPUnit : prelogin de même forme pour un email connu ou inconnu ; rejeu du hash stocké refusé ; chaque limiteur ; device cookie (valide, falsifié, révoqué) ; 10 requêtes simultanées sur un compte limité répondent en moins de 1 s ; inscription refusée quand un compte existe.
 - Playwright : inscription puis connexion, **interception réseau** vérifiant que ni le mot de passe ni la Secret Key ne transitent ; un prelogin falsifié avec des paramètres faibles est refusé par le client.
+
+**Écarts constatés lors de la réalisation** :
+- inscription, kit de secours, connexion et déverrouillage sont des écrans de l'application à page unique servie sur `/` (et non des pages Twig séparées), en préparation de la phase 5 ;
+- `GET /api/vault` est livré dès cette phase : il permet de vérifier que la clé de coffre se déchiffre après la connexion ; `GET /api/session` indique aussi si l'inscription est ouverte ;
+- Symfony vide les jetons CSRF quand la session est renouvelée à la connexion (protection contre la fixation de session) : le client relit son jeton via `/api/session` juste après ;
+- la durée absolue de session (4 h) est appliquée ici, par un abonné dédié ;
+- le test « 10 requêtes simultanées en moins de 1 s » est remplacé par l'absence vérifiable de toute pause côté serveur : un compte bloqué répond immédiatement en 429 (testé) ;
+- les mots de passe maîtres composés uniquement de chiffres sont aussi refusés ; liste des mots de passe courants issue de SecLists (MIT, attribution dans `frontend/web/data/README.md`) ;
+- les tests Playwright remettent la base et les limiteurs à zéro par la console Symfony (aucun point d'entrée de test exposé) et s'exécutent un par un.
 
 ### Phase 4 — Double authentification (1,5 j)
 

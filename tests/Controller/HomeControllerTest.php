@@ -14,7 +14,8 @@ final class HomeControllerTest extends WebTestCase
         $client->request('GET', '/');
 
         self::assertResponseIsSuccessful();
-        self::assertSelectorTextContains('h1', 'Gestionnaire de mots de passe');
+        self::assertSelectorTextContains('.brand', 'Gestionnaire de mots de passe');
+        self::assertSelectorExists('main#app');
         self::assertSelectorExists('html[lang="fr"]');
     }
 
