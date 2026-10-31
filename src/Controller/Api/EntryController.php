@@ -29,6 +29,7 @@ use Symfony\Component\Uid\Uuid;
 final class EntryController extends AbstractController
 {
     public const int MAX_ENTRIES_PER_USER = 5_000;
+    public const int MAX_BATCH = 200;
     /** Maximum size of a ciphertext, in bytes once decoded (≈ 64 KiB). */
     private const int MAX_CIPHERTEXT_BYTES = 65_536;
 
@@ -60,6 +61,40 @@ final class EntryController extends AbstractController
         $this->auditLogger->log($user, 'entry_created', $uuid->toRfc4122());
 
         return new JsonResponse(self::summary($entry), 201);
+    }
+
+    /**
+     * Adds several entries at once (import of a backup), in one transaction.
+     */
+    #[Route('/batch', name: 'api_entries_batch', methods: ['POST'])]
+    public function batch(Request $request, #[CurrentUser] User $user): JsonResponse
+    {
+        $payload = JsonPayload::fromRequest($request, self::MAX_BATCH * 2 * self::MAX_CIPHERTEXT_BYTES);
+        $items = [];
+        foreach ($payload->objects('entries', self::MAX_BATCH) as $item) {
+            $items[] = [self::uuid($item->string('uuid', 36)), $item->base64('ciphertext', self::MAX_CIPHERTEXT_BYTES, exact: false)];
+        }
+
+        if ($this->entries->count(['user' => $user]) + \count($items) > self::MAX_ENTRIES_PER_USER) {
+            return ApiRequestSubscriber::error(422, 'quota_exceeded');
+        }
+        foreach ($items as [$uuid]) {
+            if (null !== $this->entries->find($uuid)) {
+                return ApiRequestSubscriber::error(409, 'conflict');
+            }
+        }
+
+        $created = [];
+        $this->entityManager->wrapInTransaction(function () use ($items, $user, &$created): void {
+            foreach ($items as [$uuid, $ciphertext]) {
+                $entry = new VaultEntry($uuid, $user, $ciphertext);
+                $this->entityManager->persist($entry);
+                $created[] = $entry;
+            }
+        });
+        $this->auditLogger->log($user, 'entries_imported', \sprintf('%d entries', \count($created)));
+
+        return new JsonResponse(['entries' => array_map(self::summary(...), $created)], 201);
     }
 
     #[Route('/{uuid}', name: 'api_entries_update', requirements: ['uuid' => Requirement::UUID_V4], methods: ['PUT'])]

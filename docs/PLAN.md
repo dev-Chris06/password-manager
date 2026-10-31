@@ -400,11 +400,11 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 6 — Mot de passe maître, sauvegarde, HIBP (2 j)
 
-- [ ] **Changement du mot de passe maître** : nouveau sel, nouvelle preuve, nouvelle clé de coffre chiffrée, le tout en une transaction ; révocation des sessions et des device cookies ; option « garder la même Secret Key / en générer une nouvelle » (nouveau kit de secours si elle change).
-- [ ] **Renouvellement de la clé de coffre** (option du changement) : rechiffrement de toutes les entrées côté client, remplacement atomique via `/api/entries/batch`.
-- [ ] **Export** `pm-backup-v2`, après re-saisie du mot de passe maître, entièrement côté client.
-- [ ] **Import** : demande des secrets de la sauvegarde, déchiffrement local, rechiffrement avec la clé actuelle (nouveaux uuid), envoi par lots de 200 dans une transaction, doublons détectés côté client.
-- [ ] **HIBP à la demande** : bouton « Vérifier si mes mots de passe ont fuité », SHA-1 local, envoi des 5 premiers caractères à `api.pwnedpasswords.com/range/` avec `Add-Padding: true`, comparaison locale, rapport par entrée. Jamais lancé automatiquement.
+- [x] **Changement du mot de passe maître** : nouveau sel, nouvelle preuve, nouvelle clé de coffre chiffrée, le tout en une transaction ; révocation des sessions et des device cookies ; option « garder la même Secret Key / en générer une nouvelle » (nouveau kit de secours si elle change).
+- [x] **Renouvellement de la clé de coffre** (option du changement) : rechiffrement de toutes les entrées côté client, remplacement atomique via `/api/entries/batch`.
+- [x] **Export** `pm-backup-v2`, après re-saisie du mot de passe maître, entièrement côté client.
+- [x] **Import** : demande des secrets de la sauvegarde, déchiffrement local, rechiffrement avec la clé actuelle (nouveaux uuid), envoi par lots de 200 dans une transaction, doublons détectés côté client.
+- [x] **HIBP à la demande** : bouton « Vérifier si mes mots de passe ont fuité », SHA-1 local, envoi des 5 premiers caractères à `api.pwnedpasswords.com/range/` avec `Add-Padding: true`, comparaison locale, rapport par entrée. Jamais lancé automatiquement.
 
 **Tests (Playwright)** :
 - export → changement de mot de passe → import avec les anciens secrets : réussi ;
@@ -412,6 +412,14 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 - sauvegarde dont l'en-tête est modifié : refusée ;
 - après renouvellement de la clé, l'ancienne clé ne déchiffre plus rien ;
 - HIBP : seul un préfixe de 5 caractères sort (interception réseau, réponse simulée).
+
+**Écarts constatés lors de la réalisation** :
+- route `POST /api/account/password` (au lieu de `api/changer_mdp.php`) ; le renouvellement de la clé envoie toutes les entrées rechiffrées dans la même requête, remplacées en une transaction (refusé si une seule manque) — la taille du coffre est donc limitée par `post_max_size` ;
+- les autres sessions sont fermées parce que l'empreinte de la preuve change (`EquatableInterface`) ; la session courante est renouvelée, avec un nouveau device cookie ;
+- les paramètres KDF ne sont jamais abaissés lors d'un changement : le client garde le maximum entre les paramètres actuels et ceux par défaut ;
+- l'import réutilise `POST /api/entries/batch` (lots de 200, transaction par lot), et les doublons sont détectés sur le couple site + identifiant ;
+- HIBP : vérification de la prise en charge CORS de l'en-tête `Add-Padding` par l'API réelle ; les tests de bout en bout simulent ensuite le service ;
+- la page des paramètres utilise des libellés distincts pour chaque saisie du mot de passe maître (accessibilité).
 
 ### Phase 7 — Extension Chrome (3 j)
 

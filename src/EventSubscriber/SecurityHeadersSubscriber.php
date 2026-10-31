@@ -39,7 +39,8 @@ final class SecurityHeadersSubscriber implements EventSubscriberInterface
             \sprintf("script-src 'self' 'nonce-%s' 'wasm-unsafe-eval'", $this->cspNonce->get()),
             "style-src 'self'",
             "img-src 'self' data:",
-            "connect-src 'self'",
+            // Have I Been Pwned range API, only called on demand (ADR-006).
+            "connect-src 'self' https://api.pwnedpasswords.com",
             "font-src 'self'",
             "frame-ancestors 'none'",
             "base-uri 'none'",

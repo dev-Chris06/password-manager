@@ -210,3 +210,5 @@ table.journal { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 table.journal th, table.journal td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 .settings-section { border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1rem; }
 .settings-section h2 { font-size: 1.15rem; margin-top: 0; }
+.settings-section h3 { font-size: 1rem; margin: 1rem 0 0.5rem; }
+.field input[type=file] { padding: 0.4rem; }

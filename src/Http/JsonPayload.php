@@ -52,6 +52,11 @@ final readonly class JsonPayload
         return $value;
     }
 
+    public function has(string $key): bool
+    {
+        return \array_key_exists($key, $this->data) && null !== $this->data[$key];
+    }
+
     public function optionalString(string $key, int $maxLength = 255): ?string
     {
         if (!\array_key_exists($key, $this->data) || null === $this->data[$key] || '' === $this->data[$key]) {
