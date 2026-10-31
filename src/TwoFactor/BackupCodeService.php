@@ -58,15 +58,13 @@ final readonly class BackupCodeService
             return false;
         }
 
-        $backupCode = $this->repository->findOneBy(['user' => $user, 'codeHmac' => $this->hmac($normalized), 'usedAt' => null]);
-        if (null === $backupCode) {
-            return false;
-        }
+        // Atomic single use: two parallel requests cannot both consume the same code.
+        $used = $this->entityManager->getConnection()->executeStatement(
+            'UPDATE backup_code SET used_at = ? WHERE user_id = ? AND code_hmac = ? AND used_at IS NULL',
+            [(new \DateTimeImmutable())->format('Y-m-d H:i:s'), $user->getId(), $this->hmac($normalized)],
+        );
 
-        $backupCode->markUsed();
-        $this->entityManager->flush();
-
-        return true;
+        return 1 === $used;
     }
 
     public function remaining(User $user): int

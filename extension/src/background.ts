@@ -45,6 +45,8 @@ interface LocalState {
 /** Kept in chrome.storage.session: memory only, cleared when the browser closes. */
 interface SessionState {
   vaultKey?: string;
+  /** Wrapped form of the vault key in memory: a different one on the server means it was renewed. */
+  wrappedVaultKey?: string;
   entries?: EncryptedEntry[];
 }
 
@@ -189,7 +191,7 @@ async function finishUnlock(email: string, wrapKey: CryptoKey, secretKey: string
   // Extractable only to be kept in the memory-only session storage between service worker restarts.
   const vaultKey = await unwrapVaultKey(wrapKey, vault.wrappedVaultKey, { extractable: true });
   const raw = new Uint8Array(await crypto.subtle.exportKey('raw', vaultKey));
-  await chrome.storage.session.set({ vaultKey: bytesToBase64(raw), entries: vault.entries } satisfies SessionState);
+  await chrome.storage.session.set({ vaultKey: bytesToBase64(raw), wrappedVaultKey: vault.wrappedVaultKey, entries: vault.entries } satisfies SessionState);
   wipe(raw);
 
   const state = await local();
@@ -226,16 +228,23 @@ async function vaultKey(): Promise<CryptoKey> {
 
 /** Latest encrypted entries; the cached copy is used when the server cannot be reached. */
 async function encryptedEntries(): Promise<EncryptedEntry[]> {
+  let vault: VaultResponse;
   try {
-    const vault = await api<VaultResponse>('GET', '/api/vault');
-    await chrome.storage.session.set({ entries: vault.entries } satisfies SessionState);
-    return vault.entries;
+    vault = await api<VaultResponse>('GET', '/api/vault');
   } catch (error) {
     if (error instanceof ApiFailure && error.status === 401) {
       throw error;
     }
     return (await session()).entries ?? [];
   }
+  // The vault key was renewed elsewhere (master password change with rotation): the key held
+  // here is obsolete. Lock instead of encrypting new entries with it.
+  if (vault.wrappedVaultKey !== (await session()).wrappedVaultKey) {
+    await lock();
+    throw new ApiFailure(0, 'vault_key_changed', null);
+  }
+  await chrome.storage.session.set({ entries: vault.entries } satisfies SessionState);
+  return vault.entries;
 }
 
 /** The page URL always comes from the browser, never from a message. */
@@ -247,17 +256,14 @@ async function fillableTab(tabId: number): Promise<{ url: URL } | null> {
   return { url: new URL(tab.url) };
 }
 
-async function matchingEntries(tabId: number): Promise<{ host: string; fillable: boolean; entries: (TabEntry & { password: string })[] }> {
-  const tab = await fillableTab(tabId);
-  if (tab === null) {
-    return { host: '', fillable: false, entries: [] };
-  }
+/** Entries matching one snapshot of the tab address (the same snapshot is used to fill). */
+async function matchingEntries(url: URL): Promise<(TabEntry & { password: string })[]> {
   const key = await vaultKey();
   const matches = [];
   for (const entry of await encryptedEntries()) {
     try {
       const data = await decryptEntry(key, entry.uuid, entry.ciphertext);
-      if (entryMatchesHost(data.site, data.includeSubdomains, tab.url.hostname)) {
+      if (entryMatchesHost(data.site, data.includeSubdomains, url)) {
         matches.push({ uuid: entry.uuid, site: data.site, username: data.username, password: data.password });
       }
     } catch {
@@ -265,14 +271,18 @@ async function matchingEntries(tabId: number): Promise<{ host: string; fillable:
     }
   }
   await scheduleLock();
-  return { host: tab.url.hostname, fillable: true, entries: matches };
+  return matches;
 }
 
 async function fill(tabId: number, uuid: string): Promise<WorkerResponse> {
-  const { entries } = await matchingEntries(tabId);
-  const entry = entries.find((candidate) => candidate.uuid === uuid);
+  // One snapshot of the address: the entry is matched against it and the page must still have
+  // this exact origin when the values are injected (a navigation in between cancels the fill).
   const tab = await fillableTab(tabId);
-  if (entry === undefined || tab === null) {
+  if (tab === null) {
+    return { ok: false, error: 'domain_mismatch' };
+  }
+  const entry = (await matchingEntries(tab.url)).find((candidate) => candidate.uuid === uuid);
+  if (entry === undefined) {
     return { ok: false, error: 'domain_mismatch' };
   }
   const [injection] = await chrome.scripting.executeScript({
@@ -289,6 +299,8 @@ async function add(request: Extract<PopupRequest, { type: 'add' }>): Promise<Wor
   if (tab === null || request.password === '') {
     return { ok: false, error: 'invalid_payload' };
   }
+  // Fails (and locks) if the vault key was renewed elsewhere.
+  await encryptedEntries();
   const uuid = newEntryUuid();
   const ciphertext = await encryptEntry(await vaultKey(), uuid, {
     site: tab.url.hostname.replace(/^www\./, ''),
@@ -331,8 +343,12 @@ async function handle(request: PopupRequest): Promise<WorkerResponse> {
       await lock();
       return { ok: true };
     case 'entries-for-tab': {
-      const { host, fillable, entries } = await matchingEntries(request.tabId);
-      return { ok: true, host, fillable, entries: entries.map(({ uuid, site, username }) => ({ uuid, site, username })) };
+      const tab = await fillableTab(request.tabId);
+      if (tab === null) {
+        return { ok: true, host: '', fillable: false, entries: [] };
+      }
+      const entries = await matchingEntries(tab.url);
+      return { ok: true, host: tab.url.host, fillable: true, entries: entries.map(({ uuid, site, username }) => ({ uuid, site, username })) };
     }
     case 'fill':
       return fill(request.tabId, request.uuid);

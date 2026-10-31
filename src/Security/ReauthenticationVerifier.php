@@ -24,15 +24,16 @@ final readonly class ReauthenticationVerifier
 
     public function verify(User $user, string $authProof): void
     {
+        // Counted before the check, so that parallel requests cannot exceed the budget.
         $limiter = $this->reauthenticationLimiter->create((string) $user->getId());
-        if (0 === $limiter->consume(0)->getRemainingTokens()) {
-            throw new TooManyRequestsHttpException(max(1, $limiter->consume()->getRetryAfter()->getTimestamp() - time()));
+        $limit = $limiter->consume();
+        if (!$limit->isAccepted()) {
+            throw new TooManyRequestsHttpException(max(1, $limit->getRetryAfter()->getTimestamp() - time()));
         }
 
         if (!$this->passwordHasher->isPasswordValid($user, $authProof)) {
-            $limiter->consume();
-
             throw new AccessDeniedHttpException('Invalid authentication proof.');
         }
+        $limiter->reset();
     }
 }

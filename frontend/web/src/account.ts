@@ -4,18 +4,16 @@ import {
   DEFAULT_KDF,
   deriveAccountKeys,
   encryptEntry,
-  formatSecretKey,
   generateSalt,
-  generateSecretKey,
   generateVaultKey,
   type KdfParameters,
   parseSecretKey,
   unwrapVaultKey,
   wrapVaultKey,
 } from '../../packages/crypto/src';
-import type { ApiClient } from './api';
+import { ApiError, type ApiClient } from './api';
 import { MissingSecretKeyError, reauthenticate, type UnlockedVault, type VaultResponse } from './auth';
-import { loadSecretKey, saveKnownKdf, saveSecretKey } from './secretKeyStore';
+import { forgetPendingSecretKey, loadSecretKey, saveKnownKdf, savePendingSecretKey, saveSecretKey } from './secretKeyStore';
 import type { VaultStore } from './vaultStore';
 
 export interface PasswordChange {
@@ -23,8 +21,19 @@ export interface PasswordChange {
   readonly newPassword: string;
   /** Also replace the vault key and re-encrypt every entry. */
   readonly rotateVaultKey: boolean;
-  /** Also replace the Secret Key (a new emergency kit is then required). */
-  readonly newSecretKey: boolean;
+  /**
+   * New Secret Key, already shown to the user in a new emergency kit and confirmed as saved.
+   * Undefined to keep the current one.
+   */
+  readonly newSecretKeyText?: string | undefined;
+}
+
+/**
+ * The request may have been applied by the server although no answer came back: the new
+ * credentials (and Secret Key) must be tried at the next login.
+ */
+export class PossiblyAppliedError extends Error {
+  override name = 'PossiblyAppliedError';
 }
 
 export class UnreadableEntriesError extends Error {
@@ -51,10 +60,10 @@ export async function changeMasterPassword(
   const current = await reauthenticate(vault, change.currentPassword);
 
   const storedSecretKey = loadSecretKey(email);
-  if (!change.newSecretKey && storedSecretKey === null) {
+  if (change.newSecretKeyText === undefined && storedSecretKey === null) {
     throw new MissingSecretKeyError();
   }
-  const secretKeyText = change.newSecretKey ? formatSecretKey(generateSecretKey()) : (storedSecretKey ?? '');
+  const secretKeyText = change.newSecretKeyText ?? storedSecretKey ?? '';
   const kdf = strongestKdf(vault.kdf);
   const salt = generateSalt();
   const next = await deriveAccountKeys(change.newPassword, parseSecretKey(secretKeyText), salt, kdf);
@@ -75,17 +84,31 @@ export async function changeMasterPassword(
     vaultKey = await unwrapVaultKey(current.wrapKey, vault.wrappedVaultKey, { extractable: true });
   }
 
-  await api.post('/api/account/password', {
+  const payload = {
     currentAuthProof: current.authProof,
     kdf,
     salt: bytesToBase64(salt),
     authProof: next.authProof,
     wrappedVaultKey: await wrapVaultKey(next.wrapKey, vaultKey),
     ...(entries === undefined ? {} : { entries }),
-  });
-  await api.session();
+  };
+  if (change.newSecretKeyText !== undefined) {
+    savePendingSecretKey(email, secretKeyText);
+  }
+  try {
+    await api.post('/api/account/password', payload);
+  } catch (error) {
+    // A 4xx answer means the server refused the change: nothing was applied.
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+      forgetPendingSecretKey(email);
+      throw error;
+    }
+    throw new PossiblyAppliedError('The server did not confirm the change.');
+  }
   saveSecretKey(email, secretKeyText);
+  forgetPendingSecretKey(email);
   saveKnownKdf(email, kdf);
+  await api.session();
 
   const updated = await api.get<VaultResponse>('/api/vault');
   return {

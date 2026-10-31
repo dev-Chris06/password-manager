@@ -4,6 +4,7 @@ import {
   base64ToBytes,
   bytesToBase64,
   DEFAULT_KDF,
+  DecryptionError,
   deriveAccountKeys,
   formatSecretKey,
   generateSalt,
@@ -15,8 +16,8 @@ import {
   unwrapVaultKey,
   wrapVaultKey,
 } from '../../packages/crypto/src';
-import type { ApiClient } from './api';
-import { loadKnownKdf, loadSecretKey, saveKnownKdf, saveSecretKey } from './secretKeyStore';
+import { ApiError, type ApiClient } from './api';
+import { forgetPendingSecretKey, loadKnownKdf, loadPendingSecretKey, loadSecretKey, saveKnownKdf, saveSecretKey } from './secretKeyStore';
 
 export interface EncryptedEntry {
   readonly uuid: string;
@@ -50,7 +51,7 @@ export class KdfDowngradeError extends Error {
  * Creates the account. Returns the Secret Key in its text form: it must be shown to the user
  * (emergency kit) and is never sent to the server.
  */
-export async function register(api: ApiClient, email: string, masterPassword: string): Promise<string> {
+export async function register(api: ApiClient, email: string, masterPassword: string, registrationCode?: string): Promise<string> {
   const salt = generateSalt();
   const secretKey = generateSecretKey();
   const { wrapKey, authProof } = await deriveAccountKeys(masterPassword, secretKey, salt, DEFAULT_KDF);
@@ -62,6 +63,7 @@ export async function register(api: ApiClient, email: string, masterPassword: st
     salt: bytesToBase64(salt),
     authProof,
     wrappedVaultKey: await wrapVaultKey(wrapKey, vaultKey),
+    ...(registrationCode === undefined ? {} : { registrationCode }),
   });
 
   return formatSecretKey(secretKey);
@@ -83,6 +85,13 @@ export interface DerivedLogin {
   readonly authProof: string;
 }
 
+function assertNoKdfDowngrade(email: string, kdf: KdfParameters): void {
+  const known = loadKnownKdf(email);
+  if (known !== null && isKdfDowngrade(known, kdf)) {
+    throw new KdfDowngradeError('The server sent weaker key derivation parameters than before.');
+  }
+}
+
 /** First login step: derive the keys from the prelogin parameters and send the proof. */
 export async function login(api: ApiClient, credentials: Credentials): Promise<{ result: LoginResult; derived: DerivedLogin }> {
   const email = credentials.email.trim().toLowerCase();
@@ -90,21 +99,31 @@ export async function login(api: ApiClient, credentials: Credentials): Promise<{
   if (secretKeyText === null || secretKeyText === '') {
     throw new MissingSecretKeyError();
   }
-  const secretKey = parseSecretKey(secretKeyText);
 
   const prelogin = await api.post<{ kdf: unknown; salt: string }>('/api/auth/prelogin', { email });
   assertKdfParameters(prelogin.kdf);
-  const known = loadKnownKdf(email);
-  if (known !== null && isKdfDowngrade(known, prelogin.kdf)) {
-    throw new KdfDowngradeError('The server sent weaker key derivation parameters than before.');
+  assertNoKdfDowngrade(email, prelogin.kdf);
+  const kdf = prelogin.kdf;
+
+  const attempt = async (text: string): Promise<{ result: LoginResult; derived: DerivedLogin }> => {
+    const secretKey = parseSecretKey(text);
+    const { wrapKey, authProof } = await deriveAccountKeys(credentials.masterPassword, secretKey, base64ToBytes(prelogin.salt), kdf);
+    const result = await api.post<LoginResult>('/api/auth/login', { email, authProof });
+    // Logging in renews the session and its CSRF token.
+    await api.session();
+    return { result, derived: { email, kdf, secretKeyText: formatSecretKey(secretKey), wrapKey, authProof } };
+  };
+
+  try {
+    return await attempt(secretKeyText);
+  } catch (error) {
+    // A Secret Key change whose confirmation was lost: the pending key may be the right one.
+    const pending = loadPendingSecretKey(email);
+    if (credentials.secretKeyText === undefined && pending !== null && error instanceof ApiError && error.code === 'invalid_credentials') {
+      return attempt(pending);
+    }
+    throw error;
   }
-
-  const { wrapKey, authProof } = await deriveAccountKeys(credentials.masterPassword, secretKey, base64ToBytes(prelogin.salt), prelogin.kdf);
-  const result = await api.post<LoginResult>('/api/auth/login', { email, authProof });
-  // Logging in renews the session and its CSRF token.
-  await api.session();
-
-  return { result, derived: { email, kdf: prelogin.kdf, secretKeyText: formatSecretKey(secretKey), wrapKey, authProof } };
 }
 
 export interface TwoFactorEnrollment {
@@ -135,6 +154,9 @@ export async function openVault(api: ApiClient, derived: DerivedLogin): Promise<
   const vault = await api.get<VaultResponse>('/api/vault');
   const vaultKey = await unwrapVaultKey(derived.wrapKey, vault.wrappedVaultKey);
   saveSecretKey(derived.email, derived.secretKeyText);
+  if (loadPendingSecretKey(derived.email) === derived.secretKeyText) {
+    forgetPendingSecretKey(derived.email);
+  }
   saveKnownKdf(derived.email, derived.kdf);
   return { email: derived.email, vaultKey, vault };
 }
@@ -147,9 +169,23 @@ export async function unlock(api: ApiClient, email: string, masterPassword: stri
   }
   const vault = await api.get<VaultResponse>('/api/vault');
   assertKdfParameters(vault.kdf);
-  const { wrapKey } = await deriveAccountKeys(masterPassword, parseSecretKey(text), base64ToBytes(vault.salt), vault.kdf);
-  const vaultKey = await unwrapVaultKey(wrapKey, vault.wrappedVaultKey);
-  return { email, vaultKey, vault };
+  assertNoKdfDowngrade(email, vault.kdf);
+  const open = async (candidate: string): Promise<CryptoKey> => {
+    const { wrapKey } = await deriveAccountKeys(masterPassword, parseSecretKey(candidate), base64ToBytes(vault.salt), vault.kdf);
+    return unwrapVaultKey(wrapKey, vault.wrappedVaultKey);
+  };
+  try {
+    return { email, vaultKey: await open(text), vault };
+  } catch (error) {
+    const pending = loadPendingSecretKey(email);
+    if (secretKeyText === undefined && pending !== null && error instanceof DecryptionError) {
+      const vaultKey = await open(pending);
+      saveSecretKey(email, pending);
+      forgetPendingSecretKey(email);
+      return { email, vaultKey, vault };
+    }
+    throw error;
+  }
 }
 
 /**
@@ -166,6 +202,7 @@ export async function reauthenticate(
     throw new MissingSecretKeyError();
   }
   assertKdfParameters(vault.kdf);
+  assertNoKdfDowngrade(vault.email, vault.kdf);
   const { wrapKey, authProof } = await deriveAccountKeys(masterPassword, parseSecretKey(text), base64ToBytes(vault.salt), vault.kdf);
   // Fails here, before any request, if the master password is wrong.
   await unwrapVaultKey(wrapKey, vault.wrappedVaultKey);

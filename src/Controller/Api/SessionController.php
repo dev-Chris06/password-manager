@@ -26,7 +26,8 @@ final class SessionController extends AbstractController
         return new JsonResponse([
             'authenticated' => $authenticated,
             'email' => $authenticated ? $user?->getUserIdentifier() : null,
-            'registrationOpen' => null === $user && $registration->isOpen(),
+            'registrationOpen' => $registrationOpen = (null === $user && $registration->isOpen()),
+            'registrationCodeRequired' => $registrationOpen && $registration->requiresCode(),
             'csrfToken' => $csrfTokenManager->getToken(ApiRequestSubscriber::CSRF_TOKEN_ID)->getValue(),
         ]);
     }

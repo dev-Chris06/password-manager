@@ -26,7 +26,7 @@ Le script est idempotent (il peut être relancé). Il installe et configure :
 | Pare-feu | `nftables` : seuls SSH (22), HTTP (80) et HTTPS (443) sont ouverts |
 | Utilisateur | `pm-app`, sans shell, propriétaire de `/srv/password-manager` |
 | Base | MariaDB, base `pm_vault`, compte `pm_app` limité à cette base, mot de passe aléatoire |
-| Secrets | `/srv/password-manager/shared/.env.local` (`600`), `APP_SECRET` aléatoire |
+| Secrets | `/srv/password-manager/shared/.env.local` (`600`), `APP_SECRET` et `REGISTRATION_CODE` aléatoires (le code est affiché à la fin du script) |
 | PHP-FPM | Pool dédié (`deploy/php-fpm-pool.conf`) : socket privé, `open_basedir`, fonctions d'exécution désactivées, `session.upload_progress` désactivé |
 | Caddy | `deploy/Caddyfile` : HTTPS Let's Encrypt, seul `index.php` est exécutable, assets statiques sous `/build` |
 | Cron | Purge quotidienne (`app:purge`) et sauvegarde quotidienne de la base (14 jours) |
@@ -48,7 +48,7 @@ sudo systemctl reload php8.3-fpm   # vide l'OPcache
 - [ ] `curl -I https://coffre.exemple.fr` montre `Strict-Transport-Security`, `Content-Security-Policy` et aucun en-tête `Server`/`X-Powered-By`.
 - [ ] [securityheaders.com](https://securityheaders.com) et [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory) : **A+**.
 - [ ] `sudo nft list ruleset` : seuls 22, 80 et 443 sont ouverts.
-- [ ] Créer le compte, activer la double authentification, imprimer le kit de secours.
+- [ ] Créer le compte avec le code d'inscription affiché par `provision.sh`, activer la double authentification, imprimer le kit de secours.
 - [ ] Exporter une sauvegarde chiffrée et la conserver hors du serveur.
 
 ## Sauvegardes

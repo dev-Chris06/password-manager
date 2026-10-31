@@ -1,5 +1,6 @@
 // Turns any failure into a message for the user (French interface), without technical details.
 import { CryptoFormatError, DecryptionError, InvalidSecretKeyError, WeakKdfParametersError } from '../../packages/crypto/src';
+import { PossiblyAppliedError } from './account';
 import { ApiError } from './api';
 import { KdfDowngradeError, MissingSecretKeyError } from './auth';
 
@@ -12,6 +13,10 @@ export function describeError(error: unknown): string {
         const minutes = Math.max(1, Math.ceil((error.retryAfterSeconds ?? 60) / 60));
         return `Trop de tentatives. Réessayez dans ${String(minutes)} minute${minutes > 1 ? 's' : ''}.`;
       }
+      case 'invalid_registration_code':
+        return 'Code d’inscription incorrect. Il figure dans la configuration du serveur (REGISTRATION_CODE).';
+      case 'two_factor_already_enabled':
+        return 'La double authentification a déjà été activée depuis une autre session : reconnectez-vous.';
       case 'registration_closed':
         return 'Les inscriptions sont fermées : un compte existe déjà sur ce serveur.';
       case 'session_expired':
@@ -26,6 +31,9 @@ export function describeError(error: unknown): string {
       default:
         return error.status >= 500 ? 'Le serveur a rencontré une erreur. Réessayez plus tard.' : 'La requête a été refusée.';
     }
+  }
+  if (error instanceof PossiblyAppliedError) {
+    return 'Le serveur n’a pas confirmé le changement : il a peut-être été appliqué. Si votre ancien mot de passe maître est refusé, utilisez le nouveau (et la nouvelle Secret Key de votre kit, mémorisée sur cet appareil).';
   }
   if (error instanceof InvalidSecretKeyError) {
     return 'Secret Key invalide : recopiez-la depuis votre kit de secours.';

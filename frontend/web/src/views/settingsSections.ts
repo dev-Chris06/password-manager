@@ -13,7 +13,12 @@ function section(title: string, description: string, ...content: Node[]): HTMLEl
 
 const describeWithForm = (describe: Describe) => (error: unknown): string => (error instanceof FormError ? error.message : describe(error));
 
-export function masterPasswordSection(email: string, onSubmit: (change: PasswordChange) => Promise<void>, describe: Describe): HTMLElement {
+export interface MasterPasswordChangeRequest extends Omit<PasswordChange, 'newSecretKeyText'> {
+  /** Also replace the Secret Key (a new emergency kit is shown first). */
+  readonly newSecretKey: boolean;
+}
+
+export function masterPasswordSection(email: string, onSubmit: (change: MasterPasswordChangeRequest) => Promise<void>, describe: Describe): HTMLElement {
   const current = field('Mot de passe maître actuel', input('password', 'change-current', { autocomplete: 'current-password', required: true }));
   const next = field('Nouveau mot de passe maître', input('password', 'change-new', { autocomplete: 'new-password', required: true }));
   const confirmation = field('Confirmation du nouveau mot de passe', input('password', 'change-confirmation', { autocomplete: 'new-password', required: true }));

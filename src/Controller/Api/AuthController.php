@@ -72,6 +72,7 @@ final class AuthController extends AbstractController
             $payload->base64('salt', 16),
             $payload->base64('authProof', 32),
             $payload->base64('wrappedVaultKey', self::WRAPPED_VAULT_KEY_BYTES),
+            $payload->optionalString('registrationCode', 128),
         );
 
         return new JsonResponse(['registered' => true], 201);

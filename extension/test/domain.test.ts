@@ -12,23 +12,37 @@ describe('site host', () => {
   });
 });
 
+const page = (url: string): URL => new URL(url);
+
 describe('entry matching', () => {
   it('matches the exact host, with or without www', () => {
-    expect(entryMatchesHost('example.com', false, 'example.com')).toBe(true);
-    expect(entryMatchesHost('example.com', false, 'www.example.com')).toBe(true);
-    expect(entryMatchesHost('https://www.example.com', false, 'example.com')).toBe(true);
+    expect(entryMatchesHost('example.com', false, page('https://example.com/login'))).toBe(true);
+    expect(entryMatchesHost('example.com', false, page('https://www.example.com/'))).toBe(true);
+    expect(entryMatchesHost('https://www.example.com', false, page('https://example.com/'))).toBe(true);
   });
 
   it('only matches subdomains when the entry allows it', () => {
-    expect(entryMatchesHost('example.com', false, 'login.example.com')).toBe(false);
-    expect(entryMatchesHost('example.com', true, 'login.example.com')).toBe(true);
+    expect(entryMatchesHost('example.com', false, page('https://login.example.com/'))).toBe(false);
+    expect(entryMatchesHost('example.com', true, page('https://login.example.com/'))).toBe(true);
   });
 
   it('never matches look-alike or parent domains', () => {
-    expect(entryMatchesHost('example.com', true, 'example.com.evil.net')).toBe(false);
-    expect(entryMatchesHost('example.com', true, 'notexample.com')).toBe(false);
-    expect(entryMatchesHost('login.example.com', true, 'example.com')).toBe(false);
-    expect(entryMatchesHost('com', true, 'example.com')).toBe(false);
+    expect(entryMatchesHost('example.com', true, page('https://example.com.evil.net/'))).toBe(false);
+    expect(entryMatchesHost('example.com', true, page('https://notexample.com/'))).toBe(false);
+    expect(entryMatchesHost('login.example.com', true, page('https://example.com/'))).toBe(false);
+    expect(entryMatchesHost('com', true, page('https://example.com/'))).toBe(false);
+  });
+
+  it('never extends an entry to a whole public suffix', () => {
+    expect(entryMatchesHost('co.uk', true, page('https://bank.co.uk/'))).toBe(false);
+    expect(entryMatchesHost('github.io', true, page('https://attacker.github.io/'))).toBe(false);
+    expect(entryMatchesHost('bank.co.uk', true, page('https://login.bank.co.uk/'))).toBe(true);
+  });
+
+  it('requires the same port', () => {
+    expect(entryMatchesHost('example.com', false, page('https://example.com:8443/'))).toBe(false);
+    expect(entryMatchesHost('example.com:8443', false, page('https://example.com:8443/'))).toBe(true);
+    expect(entryMatchesHost('localhost:8000', false, page('http://localhost:8000/'))).toBe(true);
   });
 });
 

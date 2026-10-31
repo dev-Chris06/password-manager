@@ -43,9 +43,11 @@ final class TwoFactorController extends AbstractController
         RateLimiterFactoryInterface $secondFactorLimiter,
         TokenStorageInterface $tokenStorage,
     ): JsonResponse {
+        // Counted before the check, so that parallel requests cannot exceed the budget.
         $limiter = $secondFactorLimiter->create((string) $user->getId());
-        if (0 === $limiter->consume(0)->getRemainingTokens()) {
-            return $this->abandonLogin($request, $tokenStorage, $limiter->consume()->getRetryAfter());
+        $limit = $limiter->consume();
+        if (!$limit->isAccepted()) {
+            return $this->abandonLogin($request, $tokenStorage, $limit->getRetryAfter());
         }
 
         $payload = JsonPayload::fromRequest($request, 4096);
@@ -60,7 +62,6 @@ final class TwoFactorController extends AbstractController
 
         if (!$verified) {
             $this->auditLogger->log($user, '2fa_failure');
-            $limit = $limiter->consume();
             if (0 === $limit->getRemainingTokens()) {
                 // Too many wrong codes: the half-open login is dropped, the proof must be sent again.
                 return $this->abandonLogin($request, $tokenStorage, $limiter->consume()->getRetryAfter());
@@ -83,6 +84,9 @@ final class TwoFactorController extends AbstractController
     #[Route('/api/2fa/setup', name: 'api_2fa_setup', methods: ['POST'])]
     public function setup(Request $request, #[CurrentUser] User $user, ReauthenticationVerifier $reauthentication, TotpService $totp): JsonResponse
     {
+        if ($this->enrolledElsewhere($user)) {
+            return ApiRequestSubscriber::error(403, 'two_factor_already_enabled');
+        }
         $reauthentication->verify($user, JsonPayload::fromRequest($request, 4096)->base64('authProof', 32));
 
         return new JsonResponse($totp->startEnrollment($user));
@@ -94,6 +98,9 @@ final class TwoFactorController extends AbstractController
     #[Route('/api/2fa/enable', name: 'api_2fa_enable', methods: ['POST'])]
     public function enable(Request $request, #[CurrentUser] User $user, TotpService $totp, BackupCodeService $backupCodes): JsonResponse
     {
+        if ($this->enrolledElsewhere($user)) {
+            return ApiRequestSubscriber::error(403, 'two_factor_already_enabled');
+        }
         $code = JsonPayload::fromRequest($request, 4096)->string('code', 16);
         if (!$totp->confirmEnrollment($user, $code)) {
             return ApiRequestSubscriber::error(422, 'invalid_code');
@@ -129,6 +136,15 @@ final class TwoFactorController extends AbstractController
         $this->auditLogger->log($user, 'backup_codes_regenerated');
 
         return new JsonResponse(['backupCodes' => $codes]);
+    }
+
+    /**
+     * A session still in the enrollment step must not replace a TOTP secret that another session
+     * has enabled in the meantime: it has to log in again with the second factor.
+     */
+    private function enrolledElsewhere(User $user): bool
+    {
+        return $user->isTotpEnabled() && !$this->isGranted('ROLE_USER');
     }
 
     private function completeLogin(User $user): JsonResponse

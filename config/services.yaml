@@ -31,3 +31,12 @@ services:
     App\Security\ApiRequestSubscriber:
         arguments:
             $extensionOrigin: '%env(EXTENSION_ORIGIN)%'
+
+    # Filesystem cache adapter whose files live in var/rate_limiter instead of var/cache.
+    app.cache.adapter.persistent_filesystem:
+        parent: cache.adapter.filesystem
+        abstract: true
+        arguments:
+            $directory: '%kernel.project_dir%/var/rate_limiter/%kernel.environment%'
+        tags:
+            - { name: cache.pool, clearer: cache.default_clearer, reset: reset }

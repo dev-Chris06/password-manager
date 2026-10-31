@@ -10,7 +10,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 /**
  * Login attempt limits (docs/PLAN.md §4.6).
  *
- * Without a trusted device cookie, failures count per IP+email pair, per IP and per email.
+ * Without a trusted device cookie, attempts count per IP+email pair, per IP and per email.
  * With a valid device cookie only the per-device limiter applies: an attacker hammering the
  * owner's email from elsewhere can no longer lock the owner out.
  */
@@ -28,33 +28,27 @@ final readonly class LoginThrottler
     }
 
     /**
-     * Returns when the next attempt will be allowed, or null if an attempt is allowed now.
-     * Never consumes a token.
+     * Counts this attempt on every applicable limiter before the credentials are checked, so that
+     * parallel requests cannot all pass a check made before any of them is counted.
+     * Returns when the next attempt will be allowed if this one is refused, or null.
      */
-    public function blockedUntil(string $email, string $ip, ?string $deviceKey): ?\DateTimeImmutable
+    public function attempt(string $email, string $ip, ?string $deviceKey): ?\DateTimeImmutable
     {
         $until = null;
         foreach ($this->limiters($email, $ip, $deviceKey) as $limiter) {
-            if ($limiter->consume(0)->getRemainingTokens() > 0) {
-                continue;
-            }
-            // A rejected consumption does not count as a hit: it only reveals the retry date.
-            $retryAfter = $limiter->consume()->getRetryAfter();
-            if (null === $until || $retryAfter > $until) {
-                $until = $retryAfter;
+            $limit = $limiter->consume();
+            if (!$limit->isAccepted() && (null === $until || $limit->getRetryAfter() > $until)) {
+                $until = $limit->getRetryAfter();
             }
         }
 
         return $until;
     }
 
-    public function recordFailure(string $email, string $ip, ?string $deviceKey): void
-    {
-        foreach ($this->limiters($email, $ip, $deviceKey) as $limiter) {
-            $limiter->consume();
-        }
-    }
-
+    /**
+     * A successful login frees the per-pair and per-device budgets (not the per-IP and
+     * per-email ones, which also protect against slow guessing from many sources).
+     */
     public function recordSuccess(string $email, string $ip, ?string $deviceKey): void
     {
         $this->loginPairShortLimiter->create(self::pairKey($email, $ip))->reset();

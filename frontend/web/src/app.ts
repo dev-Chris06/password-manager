@@ -1,4 +1,5 @@
 // Single-page vault application: screens and transitions between them.
+import { formatSecretKey, generateSecretKey } from '../../packages/crypto/src';
 import { changeMasterPassword, UnreadableEntriesError } from './account';
 import { ApiClient, ApiError } from './api';
 import {
@@ -51,7 +52,7 @@ export class App {
     if (session.authenticated && session.email !== null) {
       this.showLocked(session.email);
     } else if (session.registrationOpen) {
-      this.showRegister();
+      this.showRegister(session.registrationCodeRequired);
     } else {
       this.showLogin();
     }
@@ -79,12 +80,13 @@ export class App {
 
   // --- Account creation and login -------------------------------------------------------------
 
-  private showRegister(): void {
+  private showRegister(codeRequired: boolean): void {
     this.show(
       registerView({
+        codeRequired,
         describe: describeError,
-        onSubmit: async (email, masterPassword) => {
-          const secretKeyText = await register(this.api, email, masterPassword);
+        onSubmit: async (email, masterPassword, registrationCode) => {
+          const secretKeyText = await register(this.api, email, masterPassword, registrationCode);
           this.showKit(email, masterPassword, secretKeyText);
         },
       }),
@@ -261,19 +263,25 @@ export class App {
         sections: [
           masterPasswordSection(
             email,
-            async (change) => {
-              const { unlocked, secretKeyText } = await changeMasterPassword(this.api, open.store, email, change);
-              if (change.newSecretKey) {
-                this.close();
-                this.show(kitView({
-                  email,
-                  secretKeyText,
-                  describe: describeError,
-                  onContinue: () => this.enterVault(unlocked, 'Mot de passe maître et Secret Key changés.'),
-                }));
-              } else {
-                await this.enterVault(unlocked, change.rotateVaultKey ? 'Mot de passe maître changé et coffre rechiffré.' : 'Mot de passe maître changé.');
+            async (request) => {
+              const notice = request.rotateVaultKey ? 'Mot de passe maître changé et coffre rechiffré.' : 'Mot de passe maître changé.';
+              if (!request.newSecretKey) {
+                const { unlocked } = await changeMasterPassword(this.api, open.store, email, { ...request, newSecretKeyText: undefined });
+                await this.enterVault(unlocked, notice);
+                return;
               }
+              // The new Secret Key is shown and confirmed as saved BEFORE the change is sent:
+              // whatever happens next, the owner already holds it.
+              const newSecretKeyText = formatSecretKey(generateSecretKey());
+              this.show(kitView({
+                email,
+                secretKeyText: newSecretKeyText,
+                describe: this.describe,
+                onContinue: async () => {
+                  const { unlocked } = await changeMasterPassword(this.api, open.store, email, { ...request, newSecretKeyText });
+                  await this.enterVault(unlocked, 'Mot de passe maître et Secret Key changés.');
+                },
+              }));
             },
             this.describe,
           ),
