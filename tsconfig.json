@@ -14,5 +14,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["frontend/**/*.ts", "tests/e2e/**/*.ts", "tools/**/*.ts", "*.config.ts"]
+  "include": ["frontend/**/*.ts", "extension/src/**/*.ts", "extension/test/**/*.ts", "tests/e2e/**/*.ts", "tools/**/*.ts", "*.config.ts"]
 }

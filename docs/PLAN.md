@@ -423,19 +423,27 @@ Effort total estimé : **≈ 21 jours de travail effectif**, sans échéance (D1
 
 ### Phase 7 — Extension Chrome (3 j)
 
-- [ ] Projet `extension/` en TypeScript, MV3, `key` fixe dans le manifest (identifiant stable pour `EXTENSION_ORIGIN`), version 2.0.0.
-- [ ] Configuration de l'adresse du serveur, avec `optional_host_permissions` demandées à l'exécution (HTTP accepté uniquement pour `localhost`).
-- [ ] **Déverrouillage** dans le popup : email, mot de passe, Secret Key mémorisée dans `chrome.storage.local`, puis 2FA si aucune session. Clé de coffre dans `chrome.storage.session` avec `setAccessLevel('TRUSTED_CONTEXTS')`. Verrouillage après 15 min et à la fermeture du navigateur.
-- [ ] Planchers KDF et mémorisation des paramètres vus (alerte en cas de baisse).
-- [ ] Déchiffrement **uniquement dans le service worker** ; blobs mis en cache chiffrés.
-- [ ] **Remplissage par défaut via le popup** (que la page ne peut pas manipuler). Le domaine est lu dans l'onglet actif, jamais dans un message.
-- [ ] **Menu intégré à la page** facultatif (désactivé par défaut) : `iframe` appartenant à l'extension (`web_accessible_resources` + `use_dynamic_url`), détection des manipulations d'opacité et de visibilité sur l'iframe et ses parents, vérification `elementFromPoint` avant de remplir.
-- [ ] Correspondance des domaines : hôte exact, sous-domaines seulement si l'entrée le permet ; refus dans les iframes d'une autre origine et sur HTTP (hors localhost) ; vérification de `sender.id` et de `sender.tab.url`.
-- [ ] Enregistrement d'un mot de passe généré : chiffré dans le service worker, envoyé à `/api/entries`.
+- [x] Projet `extension/` en TypeScript, MV3, `key` fixe dans le manifest (identifiant stable pour `EXTENSION_ORIGIN`), version 2.0.0.
+- [x] Configuration de l'adresse du serveur, avec `optional_host_permissions` demandées à l'exécution (HTTP accepté uniquement pour `localhost`).
+- [x] **Déverrouillage** dans le popup : email, mot de passe, Secret Key mémorisée dans `chrome.storage.local`, puis 2FA si aucune session. Clé de coffre dans `chrome.storage.session` avec `setAccessLevel('TRUSTED_CONTEXTS')`. Verrouillage après 15 min et à la fermeture du navigateur.
+- [x] Planchers KDF et mémorisation des paramètres vus (alerte en cas de baisse).
+- [x] Déchiffrement **uniquement dans le service worker** ; blobs mis en cache chiffrés.
+- [x] **Remplissage par défaut via le popup** (que la page ne peut pas manipuler). Le domaine est lu dans l'onglet actif, jamais dans un message.
+- [x] **Menu intégré à la page** facultatif (désactivé par défaut) : `iframe` appartenant à l'extension (`web_accessible_resources` + `use_dynamic_url`), détection des manipulations d'opacité et de visibilité sur l'iframe et ses parents, vérification `elementFromPoint` avant de remplir.
+- [x] Correspondance des domaines : hôte exact, sous-domaines seulement si l'entrée le permet ; refus dans les iframes d'une autre origine et sur HTTP (hors localhost) ; vérification de `sender.id` et de `sender.tab.url`.
+- [x] Enregistrement d'un mot de passe généré : chiffré dans le service worker, envoyé à `/api/entries`.
 
 **Tests** :
 - Vitest : correspondance des domaines ; routage des messages (API Chrome simulées) ; planchers KDF.
 - Playwright avec l'extension chargée : déverrouillage, remplissage sur une page de test, **refus sur un autre domaine**, refus dans une iframe d'une autre origine, menu intégré masqué par opacité → aucun remplissage.
+
+**Écarts constatés lors de la réalisation** :
+- **aucun menu intégré à la page** (ni content script permanent) : le remplissage passe uniquement par la popup puis `chrome.scripting.executeScript` dans l'onglet actif. Le risque de *clickjacking* d'extension disparaît au lieu d'être atténué ; le contrôle `elementFromPoint` est conservé dans la fonction de remplissage ;
+- la clé du coffre est conservée en octets bruts dans `chrome.storage.session` (en mémoire, réservé à l'extension) : le service worker MV3 peut être arrêté à tout moment, une `CryptoKey` ne survivrait pas ;
+- le domaine est lu via `chrome.tabs` (permission `activeTab`) ; les messages ne sont acceptés que des pages de l'extension (vérification de `sender.url`) ;
+- l'activation de la double authentification se fait dans l'application web ; si le navigateur a déjà une session complète, l'extension déverrouille localement sans second facteur ;
+- identifiant d'extension fixe (`nfnbankmkanaglimeogpgljgpkpdbenl`, clé publique dans le manifeste ; la clé privée n'est pas conservée dans le dépôt) ;
+- build de test `--e2e` (autorisations d'hôte d'avance, onglet cible dans l'URL de la popup), jamais distribué.
 
 ### Phase 8 — Durcissement et déploiement (2 j)
 

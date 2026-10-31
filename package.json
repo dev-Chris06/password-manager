@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "npm run e2e:db && php bin/console cache:clear --env=e2e --no-debug --quiet && playwright test",
+    "test:e2e": "npm run e2e:db && node tools/build.mjs --e2e && php bin/console cache:clear --env=e2e --no-debug --quiet && playwright test",
     "check:apis": "node tools/check-forbidden-apis.mjs",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build && npm run check:apis",
     "e2e:db": "php bin/console doctrine:database:drop --env=e2e --force --if-exists --quiet && php bin/console doctrine:database:create --env=e2e --quiet && php bin/console doctrine:migrations:migrate --env=e2e --no-interaction --quiet"
@@ -20,6 +20,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.1",
+    "@types/chrome": "0.3.7",
     "@types/node": "24.19.2",
     "esbuild": "0.28.2",
     "eslint": "10.13.0",
