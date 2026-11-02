@@ -38,7 +38,7 @@ cd password-manager
 composer install
 npm ci
 npx playwright install chromium   # navigateur des tests de bout en bout
-cp .env.local.dist .env.local     # facultatif en phase 0, puis renseigner les valeurs locales
+cp .env.local.dist .env.local     # puis renseigner APP_SECRET et DATABASE_URL
 npm run build
 ```
 
@@ -68,7 +68,7 @@ php bin/console doctrine:database:create --env=test && php bin/console doctrine:
 ## Configuration locale
 
 - `.env` est **versionné** et ne contient que des valeurs par défaut sans secret.
-- `.env.local` est **ignoré par git** et contient vos valeurs (secrets, base de données). Générer un secret :
+- `.env.local` est **ignoré par git** et contient vos valeurs (secrets, base de données). `APP_SECRET` y est **obligatoire** : aucun secret de développement n'est versionné. Générer un secret :
 
 ```bash
 php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'

@@ -24,7 +24,7 @@ cp -r public/build "${STAGE:?}/${NAME}/public/build"
   rm -rf -- ./tests ./frontend ./extension ./node_modules ./.github \
     ./tools/build.mjs ./tools/check-forbidden-apis.mjs \
     ./package.json ./package-lock.json ./tsconfig.json ./eslint.config.js ./vitest.config.ts ./playwright.config.ts \
-    ./phpunit.dist.xml ./phpstan.dist.neon ./.php-cs-fixer.dist.php ./.env.test ./.env.e2e ./.env.dev ./.editorconfig
+    ./phpunit.dist.xml ./phpstan.dist.neon ./.php-cs-fixer.dist.php ./.env.test ./.env.e2e ./.editorconfig
   mkdir -p var
 )
 tar -czf "$OUT/$NAME.tar.gz" -C "${STAGE:?}" "$NAME"
