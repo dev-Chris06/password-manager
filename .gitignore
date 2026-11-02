@@ -41,3 +41,9 @@ Thumbs.db
 /phpunit.xml
 /.phpunit.cache/
 ###< phpunit/phpunit ###
+
+# AI assistants and editor tool folders
+/.codex/
+/.agents/
+/.trae/
+/.claude/
